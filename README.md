@@ -154,6 +154,10 @@ real price differs from what Hermes assumed. The footer shows which mode is acti
 `cost_multiplier` then scales every displayed cost, for calibrating against your
 provider's usage page.
 
+Note: this dashboard only sees **Hermes** usage. Provider balances (e.g. Kilo
+credits) are often shared with other tools (IDE extension, CLI, cloud agents), so
+the provider's usage page will usually show more spend than this dashboard does.
+
 The failure-marker knobs exist because Hermes's tool-result JSON could change
 across versions — if a new error shape appears, add it via `HO_EXTRA_FAIL_MARKERS`
 (e.g. `'"ok": false'`) without touching code.
