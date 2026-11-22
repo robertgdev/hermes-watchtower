@@ -65,6 +65,8 @@ python3 server.py --port 8790 --home ~/.hermes   # explicit options
 
 Then open http://127.0.0.1:8790
 
+![Hermes Operate dashboard](docs/screenshot.png)
+
 - Auto-refreshes every 30 s
 - Card data is loaded with the page (`/api/data`); the tool-call modal and full
   messages are fetched **on demand** when opened; an open modal does not live-update
@@ -131,6 +133,37 @@ Window semantics: no `date` → rolling window ending now; `date=D` → window *
 on D (24h = D's calendar day, 7d/30d = N days ending on D, all = everything up to D).
 Hourly timeline buckets for ≤2-day windows, daily otherwise.
 
+## Configuration
+
+Everything runs with sensible defaults; optional knobs:
+
+| Setting | How | Default |
+|---|---|---|
+| Port | `--port N` / `start.sh N` | 8790 — if busy, the server **falls back to a free ephemeral port** and prints the real URL |
+| Hermes home | `--home DIR` / `$HERMES_HOME` | `~/.hermes` |
+| Failure markers | `HO_FAIL_MARKERS` (comma-separated kinds: `success_false`, `error_nonnull`, `status_error`, `exit_code`) | all four enabled |
+| Extra failure markers | `HO_EXTRA_FAIL_MARKERS` (pipe-separated literal substrings) | none |
+
+The failure-marker knobs exist because Hermes's tool-result JSON could change
+across versions — if a new error shape appears, add it via `HO_EXTRA_FAIL_MARKERS`
+(e.g. `'"ok": false'`) without touching code.
+
+**Schema guard**: each profile DB's `schema_version` is reported in `/api/data`
+(`schema.profiles`) and flagged as a mismatch when it differs from the supported
+version (currently **33**). Mismatched profiles get a `schema_warning`; the rest
+of the dashboard keeps working.
+
+## Testing
+
+```bash
+python3 tests/test_aggregation.py    # 31 regression checks, stdlib only
+```
+
+Builds a synthetic Hermes home in a temp dir and asserts: aggregation totals,
+failure detection (all marker kinds + the `error: null` negative case), tool-call
+pairs/durations, the file-browser whitelist (`.env` and traversal rejected), the
+`profile=all` merge, env-config parsing, and the schema guard.
+
 ## Security model
 
 - Binds to **127.0.0.1 only**, no auth — do not expose publicly.
@@ -164,6 +197,8 @@ hermes-operate/
 ├── README.md        # this file
 ├── SKILL.md         # Hermes skill wrapper — makes this repo installable as a skill
 ├── LICENSE          # MIT
+├── tests/           # regression tests (fixture state.db, stdlib only)
+├── docs/screenshot.png
 └── references/      # optional skill reference files
 ```
 

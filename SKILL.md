@@ -45,6 +45,12 @@ A tool result is failed iff its content matches any of: `"success": false` OR a 
 - Modal stack: tool-call list (#modal) → full-message viewer (#dmodal, copy button) → info popover (#imodal) → profile files (#pmodal). All close on ✕, backdrop, Escape.
 - Date format in tables: `YYYY-MM-DD HH:MM` (zero-padded), not locale strings.
 
+## Configuration & hardening
+- Env knobs: `HO_FAIL_MARKERS` (comma-separated kinds `success_false|error_nonnull|status_error|exit_code`), `HO_EXTRA_FAIL_MARKERS` (pipe-separated literal substrings). If Hermes changes tool-result JSON, add the new error shape via `HO_EXTRA_FAIL_MARKERS` — no code change.
+- Schema guard: `SUPPORTED_SCHEMA = 33`. `/api/data` returns `schema.profiles` + `schema.mismatch`; mismatched profiles get a `schema_warning` and the rest keeps working. Bump `SUPPORTED_SCHEMA` when queries change.
+- Port fallback: if the requested port is busy, `main()` binds an ephemeral port and prints the real URL.
+- Tests: `python3 tests/test_aggregation.py` (31 checks, stdlib only, synthetic Hermes home fixture). Run after any `server.py` change.
+
 ## Pitfalls
 - Query params: `encodeURIComponent` turns `/` into `%2F`; a naive `split("=")` query parser never URL-decodes, so path/whitelist lookups silently fail for any value containing slashes. Decode server-side with `urllib.parse.unquote`.
 - Never set a container's innerHTML to a "Loading…" placeholder if child elements must survive — it destroys them (wiping #modal-body killed #callbody). Put loading/error rows inside the tbody.

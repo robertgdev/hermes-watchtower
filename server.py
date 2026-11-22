@@ -24,12 +24,50 @@ from urllib.parse import unquote
 
 HERMES_HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
 
-FAILURE_SQL = (
-    """(m.content LIKE '%"success": false%'
-       OR (m.content LIKE '%"error":%' AND m.content NOT LIKE '%"error": null%')
-       OR m.content GLOB '*EXIT_CODE=[1-9]*'
-       OR m.content LIKE '%"status": "error"%')"""
-)
+SUPPORTED_SCHEMA = 33
+
+_DEFAULT_FAIL_KINDS = ["success_false", "error_nonnull", "status_error", "exit_code"]
+
+
+def fail_marker_config():
+    """Enabled failure-marker kinds, from HO_FAIL_MARKERS env (comma-separated)."""
+    raw = os.environ.get("HO_FAIL_MARKERS", "")
+    if raw:
+        valid = set(_DEFAULT_FAIL_KINDS)
+        kinds = [k.strip() for k in raw.split(",") if k.strip() in valid]
+        if kinds:
+            return kinds
+    return list(_DEFAULT_FAIL_KINDS)
+
+
+def extra_fail_markers():
+    """Extra literal substrings that count as failure, from HO_EXTRA_FAIL_MARKERS (pipe-separated)."""
+    raw = os.environ.get("HO_EXTRA_FAIL_MARKERS", "")
+    return [s for s in raw.split("|") if s] if raw else []
+
+
+def _like_literal(s):
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def build_failure_sql(kinds, extra):
+    parts = []
+    if "success_false" in kinds:
+        parts.append("""m.content LIKE '%"success": false%'""")
+    if "error_nonnull" in kinds:
+        parts.append("""(m.content LIKE '%"error":%' AND m.content NOT LIKE '%"error": null%')""")
+    if "status_error" in kinds:
+        parts.append("""m.content LIKE '%"status": "error"%'""")
+    if "exit_code" in kinds:
+        parts.append("""m.content GLOB '*EXIT_CODE=[1-9]*'""")
+    for s in extra:
+        parts.append(f"m.content LIKE '%{_like_literal(s)}%' ESCAPE '\\'")
+    return "(" + " OR ".join(parts) + ")"
+
+
+_FAIL_KINDS = fail_marker_config()
+_EXTRA_MARKERS = extra_fail_markers()
+FAILURE_SQL = build_failure_sql(_FAIL_KINDS, _EXTRA_MARKERS)
 
 TOKEN_SUM = "(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens + reasoning_tokens)"
 
@@ -76,6 +114,7 @@ def load_profile(profile, state_path, cron_path, cutoff_ts, now_ts):
         "est_cost": 0.0, "failed": 0, "tool_results": 0, "success_rate": 1.0,
         "last_activity_at": None, "last_title": None, "last_model": None,
         "models": [], "tools": [], "activity": {}, "fail_sessions": [],
+        "schema_version": None,
     }
     try:
         conn = ro_connect(state_path)
@@ -83,6 +122,11 @@ def load_profile(profile, state_path, cron_path, cutoff_ts, now_ts):
         out["status_detail"] = f"db error: {e}"
         return out
     try:
+        try:
+            row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
+            out["schema_version"] = row["version"] if row else None
+        except sqlite3.Error:
+            out["schema_version"] = None
         # --- session rollup ---
         rows = conn.execute(
             f"""SELECT COUNT(*) sessions,
@@ -199,6 +243,8 @@ def load_profile(profile, state_path, cron_path, cutoff_ts, now_ts):
             out["status"], out["status_detail"] = "down", f"inactive {h}h {int((age % 3600)//60)}m"
     else:
         out["status"], out["status_detail"] = "down", "no activity in window"
+    if out["schema_version"] is not None and out["schema_version"] != SUPPORTED_SCHEMA:
+        out["schema_warning"] = f"schema v{out['schema_version']} (dashboard built for v{SUPPORTED_SCHEMA})"
 
     # cron executions
     out["cron"] = {"total": 0, "completed": 0, "failed": 0, "missed": 0, "cancelled": 0, "running": 0}
@@ -280,15 +326,18 @@ def compute_window(range_days, date_str=None):
 
 
 def is_failed(content):
-    """True if a tool result content carries a failure marker."""
+    """True if a tool result content carries an enabled failure marker."""
     if not content:
         return False
-    return (
-        '"success": false' in content
-        or ('"error":' in content and '"error": null' not in content)
-        or re.search(r"EXIT_CODE=[1-9]", content) is not None
-        or '"status": "error"' in content
-    )
+    if "success_false" in _FAIL_KINDS and '"success": false' in content:
+        return True
+    if "error_nonnull" in _FAIL_KINDS and '"error":' in content and '"error": null' not in content:
+        return True
+    if "status_error" in _FAIL_KINDS and '"status": "error"' in content:
+        return True
+    if "exit_code" in _FAIL_KINDS and re.search(r"EXIT_CODE=[1-9]", content) is not None:
+        return True
+    return any(s in content for s in _EXTRA_MARKERS)
 
 
 def short_summary(content, n=110):
@@ -483,6 +532,7 @@ def build_payload(range_days, home, date_str=None):
 
     profile_dbs = find_profile_dbs(home)
     profiles = []
+    schema_versions = {}
     totals = {
         "sessions": 0, "tool_calls": 0, "api_calls": 0, "tokens": 0,
         "est_cost": 0.0, "failed": 0, "tool_results": 0, "active_profiles": 0,
@@ -497,6 +547,7 @@ def build_payload(range_days, home, date_str=None):
         totals["est_cost"] += p["est_cost"]
         for k in ("total", "completed", "failed", "missed", "cancelled"):
             totals["cron"][k] += p["cron"][k]
+        schema_versions[name] = p.get("schema_version")
         profiles.append(p)
     totals["success_rate"] = 1.0 - totals["failed"] / totals["tool_results"] if totals["tool_results"] else 1.0
 
@@ -566,6 +617,11 @@ def build_payload(range_days, home, date_str=None):
         "now_ts": now_ts,
         "granularity": granularity,
         "totals": totals,
+        "schema": {
+            "supported": SUPPORTED_SCHEMA,
+            "profiles": schema_versions,
+            "mismatch": [n for n, v in schema_versions.items() if v is not None and v != SUPPORTED_SCHEMA],
+        },
         "profiles": sorted(profiles, key=lambda p: ({"active": 0, "idle": 1, "down": 2}.get(p["status"], 3), -p["est_cost"])),
         "models": [{"model": k, **v} for k, v in models_sorted],
         "tools": [{"tool": k, "count": v} for k, v in tools_sorted],
@@ -693,8 +749,14 @@ def main():
     ap.add_argument("--home", default=HERMES_HOME)
     args = ap.parse_args()
     HERMES_HOME = args.home
-    srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Hermes Operate dashboard: http://127.0.0.1:{args.port}  (home={HERMES_HOME})", flush=True)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        bound = args.port
+    except OSError as e:
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        bound = srv.server_address[1]
+        print(f"port {args.port} busy ({e.strerror or e}); serving on {bound}", flush=True)
+    print(f"Hermes Operate dashboard: http://127.0.0.1:{bound}  (home={HERMES_HOME})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
