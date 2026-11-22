@@ -116,6 +116,9 @@ def build_home(tmp):
 
 
 def main():
+    # tests must be deterministic regardless of a local config.json
+    saved_rates, saved_mult = server._RATES, server._COST_MULT
+    server._RATES, server._COST_MULT = {}, 1.0
     with tempfile.TemporaryDirectory() as tmp:
         home = build_home(tmp)
         p = server.build_payload(7, home)
@@ -169,6 +172,20 @@ def main():
         check("extra_fail_markers parses", server.extra_fail_markers() == ["boom", "oops"])
         del os.environ["HO_EXTRA_FAIL_MARKERS"]
         check("fail_marker_config default", server.fail_marker_config() == server._DEFAULT_FAIL_KINDS)
+
+        # custom rate recompute + calibration multiplier
+        rates = {"deepseek/deepseek-v4-flash": {"input": 0.09, "output": 0.18, "cache_read": 0.018}}
+        server._RATES = rates
+        c = server.session_cost_values("deepseek/deepseek-v4-flash", 1000, 500, 200, 50, 10, 999.0)
+        check("custom rate recompute", abs(c - 0.0001854) < 1e-9, str(c))
+        server._COST_MULT = 2.0
+        c2 = server.session_cost_values("deepseek/deepseek-v4-flash", 1000, 500, 200, 50, 10, 999.0)
+        check("multiplier applied", abs(c2 - 0.0003708) < 1e-9, str(c2))
+        server._COST_MULT = 1.0
+        p3 = server.build_payload(7, home)
+        check("recomputed totals", abs(p3["totals"]["est_cost"] - 0.0005562) < 1e-6, str(p3["totals"]["est_cost"]))
+        check("custom mode reported", p3["cost"]["mode"] == "custom")
+        server._RATES = {}
 
         bad = os.path.join(home, "profiles", "oldbot")
         os.makedirs(bad)

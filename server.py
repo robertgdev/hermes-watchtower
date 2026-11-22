@@ -24,6 +24,54 @@ from urllib.parse import unquote
 
 HERMES_HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
 
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+
+def load_cost_config():
+    """Custom pricing: config.json {rates: {model: {input,output,cache_read,cache_write}}, cost_multiplier}
+    plus env overrides HO_RATES (JSON) and HO_COST_MULTIPLIER."""
+    cfg = {}
+    try:
+        if os.path.isfile(CONFIG_PATH):
+            with open(CONFIG_PATH) as f:
+                cfg = json.load(f) or {}
+    except Exception:
+        cfg = {}
+    rates = cfg.get("rates") or {}
+    if os.environ.get("HO_RATES"):
+        try:
+            rates = json.loads(os.environ["HO_RATES"])
+        except Exception:
+            pass
+    mult = 1.0
+    try:
+        mult = float(cfg.get("cost_multiplier") or 1.0)
+    except Exception:
+        mult = 1.0
+    if os.environ.get("HO_COST_MULTIPLIER"):
+        try:
+            mult = float(os.environ["HO_COST_MULTIPLIER"])
+        except Exception:
+            pass
+    return {"rates": rates, "multiplier": mult}
+
+
+_CFG = load_cost_config()
+_RATES = _CFG["rates"]
+_COST_MULT = _CFG["multiplier"]
+
+
+def session_cost_values(model, tin, tout, tread, twrite, treason, stored):
+    """Per-session cost: recompute from tokens when custom rates exist for the model,
+    otherwise use the stored estimate; then apply the calibration multiplier."""
+    rates = _RATES.get(model) if _RATES else None
+    if rates:
+        c = (tin * rates.get("input", 0) + (tout + treason) * rates.get("output", 0)
+             + tread * rates.get("cache_read", 0) + twrite * rates.get("cache_write", 0)) / 1e6
+    else:
+        c = stored or 0
+    return c * _COST_MULT
+
 SUPPORTED_SCHEMA = 33
 
 _DEFAULT_FAIL_KINDS = ["success_false", "error_nonnull", "status_error", "exit_code"]
@@ -158,6 +206,20 @@ def load_profile(profile, state_path, cron_path, cutoff_ts, now_ts):
             "est_cost": rows["est_cost"],
             "last_activity_at": rows["last_activity_at"],
         })
+        # --- cost: recompute from tokens when custom rates are configured ---
+        if _RATES or _COST_MULT != 1.0:
+            cost_total = 0.0
+            for r in conn.execute(
+                """SELECT model, input_tokens, output_tokens, cache_read_tokens,
+                          cache_write_tokens, reasoning_tokens, estimated_cost_usd
+                     FROM sessions WHERE started_at >= ? AND started_at <= ?""",
+                (cutoff_ts, now_ts),
+            ):
+                cost_total += session_cost_values(
+                    r["model"], r["input_tokens"], r["output_tokens"], r["cache_read_tokens"],
+                    r["cache_write_tokens"], r["reasoning_tokens"], r["estimated_cost_usd"])
+            out["est_cost"] = cost_total
+
         # last session title/model
         last = conn.execute(
             """SELECT title, model FROM sessions
@@ -186,14 +248,19 @@ def load_profile(profile, state_path, cron_path, cutoff_ts, now_ts):
 
         # --- per-model usage (range via session join) ---
         for r in conn.execute(
-            """SELECT u.model, SUM(u.api_call_count) calls, SUM(u.estimated_cost_usd) cost
+            """SELECT u.model, SUM(u.api_call_count) calls, SUM(u.estimated_cost_usd) cost,
+                      COALESCE(SUM(u.input_tokens),0) tin, COALESCE(SUM(u.output_tokens),0) tout,
+                      COALESCE(SUM(u.cache_read_tokens),0) tread, COALESCE(SUM(u.cache_write_tokens),0) twrite,
+                      COALESCE(SUM(u.reasoning_tokens),0) treason
                  FROM session_model_usage u JOIN sessions s ON s.id = u.session_id
                 WHERE s.started_at >= ? AND s.started_at <= ?
                 GROUP BY u.model ORDER BY cost DESC""",
             (cutoff_ts, now_ts),
         ):
             if r["calls"]:
-                out["models"].append({"model": r["model"], "calls": r["calls"], "cost": round(r["cost"] or 0, 4)})
+                c = session_cost_values(r["model"], r["tin"], r["tout"], r["tread"], r["twrite"],
+                                        r["treason"], r["cost"])
+                out["models"].append({"model": r["model"], "calls": r["calls"], "cost": round(c, 4)})
 
         # --- tool usage (range via session join) ---
         for r in conn.execute(
@@ -459,6 +526,50 @@ def load_tool_calls(profile, state_path, cutoff_ts, now_ts, limit=3000):
             "SELECT COALESCE(SUM(message_count), 0) FROM sessions WHERE started_at >= ? AND started_at <= ?",
             (cutoff_ts, now_ts),
         ).fetchone()[0]
+        sums = conn.execute(
+            """SELECT COALESCE(SUM(input_tokens),0) tin, COALESCE(SUM(output_tokens),0) tout,
+                      COALESCE(SUM(estimated_cost_usd),0) cost
+                 FROM sessions WHERE started_at >= ? AND started_at <= ?""",
+            (cutoff_ts, now_ts),
+        ).fetchone()
+        out["tokens_in"] = sums["tin"]
+        out["tokens_out"] = sums["tout"]
+        out["est_cost"] = round(sums["cost"], 4)
+        if _RATES or _COST_MULT != 1.0:
+            total = 0.0
+            for r in conn.execute(
+                """SELECT model, input_tokens, output_tokens, cache_read_tokens,
+                          cache_write_tokens, reasoning_tokens, estimated_cost_usd
+                     FROM sessions WHERE started_at >= ? AND started_at <= ?""",
+                (cutoff_ts, now_ts),
+            ):
+                total += session_cost_values(r["model"], r["input_tokens"], r["output_tokens"],
+                                             r["cache_read_tokens"], r["cache_write_tokens"],
+                                             r["reasoning_tokens"], r["estimated_cost_usd"])
+            out["est_cost"] = round(total, 4)
+        out["sessions"] = []
+        for r in conn.execute(
+            """SELECT s.title, s.model, COALESCE(s.message_count,0) messages,
+                      COALESCE(SUM(json_array_length(m.tool_calls)),0) calls,
+                      COALESCE(s.input_tokens,0) tin, COALESCE(s.output_tokens,0) tout,
+                      COALESCE(s.cache_read_tokens,0) tread, COALESCE(s.cache_write_tokens,0) twrite,
+                      COALESCE(s.reasoning_tokens,0) treason, COALESCE(s.estimated_cost_usd,0) cost
+                 FROM sessions s
+                 LEFT JOIN messages m ON m.session_id = s.id AND m.role='assistant'
+                      AND m.tool_calls IS NOT NULL AND length(m.tool_calls) > 10
+                WHERE s.started_at >= ? AND s.started_at <= ?
+                GROUP BY s.id""",
+            (cutoff_ts, now_ts),
+        ):
+            out["sessions"].append({
+                "title": r["title"] or "",
+                "messages": r["messages"],
+                "calls": r["calls"],
+                "tokens_in": r["tin"],
+                "tokens_out": r["tout"],
+                "est_cost": round(session_cost_values(r["model"], r["tin"], r["tout"], r["tread"],
+                                                      r["twrite"], r["treason"], r["cost"]), 4),
+            })
         rows = conn.execute(
             """SELECT m.id, m.timestamp ts, m.tool_calls tc, m.session_id sid, s.model, s.title
                  FROM messages m JOIN sessions s ON s.id = m.session_id
@@ -572,16 +683,32 @@ def build_payload(range_days, home, date_str=None):
     for name, state, _ in profile_dbs:
         try:
             conn = ro_connect(state)
-            for r in conn.execute(
-                f"""SELECT title, model, {TOKEN_SUM} tokens, estimated_cost_usd cost, started_at
-                      FROM sessions WHERE started_at >= ? AND started_at <= ? AND estimated_cost_usd > 0
-                     ORDER BY estimated_cost_usd DESC LIMIT 12""",
-                (cutoff_ts, now_ts),
-            ):
-                expensive.append({
-                    "profile": name, "title": r["title"], "model": r["model"],
-                    "tokens": r["tokens"], "cost": round(r["cost"] or 0, 4), "started_at": r["started_at"],
-                })
+            if _RATES or _COST_MULT != 1.0:
+                for r in conn.execute(
+                    f"""SELECT title, model, {TOKEN_SUM} tokens, estimated_cost_usd cost, started_at,
+                               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens
+                          FROM sessions WHERE started_at >= ? AND started_at <= ?""",
+                    (cutoff_ts, now_ts),
+                ):
+                    c = session_cost_values(r["model"], r["input_tokens"], r["output_tokens"],
+                                            r["cache_read_tokens"], r["cache_write_tokens"],
+                                            r["reasoning_tokens"], r["cost"])
+                    if c > 0:
+                        expensive.append({
+                            "profile": name, "title": r["title"], "model": r["model"],
+                            "tokens": r["tokens"], "cost": round(c, 4), "started_at": r["started_at"],
+                        })
+            else:
+                for r in conn.execute(
+                    f"""SELECT title, model, {TOKEN_SUM} tokens, estimated_cost_usd cost, started_at
+                          FROM sessions WHERE started_at >= ? AND started_at <= ? AND estimated_cost_usd > 0
+                         ORDER BY estimated_cost_usd DESC LIMIT 12""",
+                    (cutoff_ts, now_ts),
+                ):
+                    expensive.append({
+                        "profile": name, "title": r["title"], "model": r["model"],
+                        "tokens": r["tokens"], "cost": round(r["cost"] or 0, 4), "started_at": r["started_at"],
+                    })
             conn.close()
         except Exception:
             pass
@@ -621,6 +748,11 @@ def build_payload(range_days, home, date_str=None):
             "supported": SUPPORTED_SCHEMA,
             "profiles": schema_versions,
             "mismatch": [n for n, v in schema_versions.items() if v is not None and v != SUPPORTED_SCHEMA],
+        },
+        "cost": {
+            "mode": "custom" if (_RATES or _COST_MULT != 1.0) else "stored",
+            "multiplier": _COST_MULT,
+            "rates": _RATES,
         },
         "profiles": sorted(profiles, key=lambda p: ({"active": 0, "idle": 1, "down": 2}.get(p["status"], 3), -p["est_cost"])),
         "models": [{"model": k, **v} for k, v in models_sorted],
@@ -698,6 +830,13 @@ class Handler(BaseHTTPRequestHandler):
                         merged["calls"].extend(sub["calls"])
                         merged["total"] += sub["total"]
                         merged["messages"] += sub.get("messages", 0)
+                        merged["tokens_in"] = merged.get("tokens_in", 0) + sub.get("tokens_in", 0)
+                        merged["tokens_out"] = merged.get("tokens_out", 0) + sub.get("tokens_out", 0)
+                        merged["est_cost"] = round(merged.get("est_cost", 0) + sub.get("est_cost", 0), 4)
+                        for s in sub.get("sessions", []):
+                            merged.setdefault("sessions", []).append({
+                                **s, "title": f"{name} · {s['title']}".strip(" ·"),
+                            })
                         merged["truncated"] = merged["truncated"] or sub["truncated"]
                     for c in merged["calls"]:
                         bot = c.get("profile", "?")

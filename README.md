@@ -143,6 +143,16 @@ Everything runs with sensible defaults; optional knobs:
 | Hermes home | `--home DIR` / `$HERMES_HOME` | `~/.hermes` |
 | Failure markers | `HO_FAIL_MARKERS` (comma-separated kinds: `success_false`, `error_nonnull`, `status_error`, `exit_code`) | all four enabled |
 | Extra failure markers | `HO_EXTRA_FAIL_MARKERS` (pipe-separated literal substrings) | none |
+| Cost rates | `config.json` → `rates: {model: {input, output, cache_read, cache_write}}` (USD per 1M tokens) or `HO_RATES` (JSON) | none → use Hermes's stored `estimated_cost_usd` |
+| Cost calibration | `config.json` → `cost_multiplier` or `HO_COST_MULTIPLIER` | 1.0 |
+
+**Cost model**: by default the dashboard sums Hermes's stored `estimated_cost_usd`
+(list price × tokens, recorded per session). If `rates` are configured for a model,
+the dashboard **recomputes** that model's cost from the recorded token counts instead
+(input, output+reasoning, cache read/write at your rates) — useful when the provider's
+real price differs from what Hermes assumed. The footer shows which mode is active.
+`cost_multiplier` then scales every displayed cost, for calibrating against your
+provider's usage page.
 
 The failure-marker knobs exist because Hermes's tool-result JSON could change
 across versions — if a new error shape appears, add it via `HO_EXTRA_FAIL_MARKERS`

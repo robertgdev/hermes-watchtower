@@ -47,6 +47,7 @@ A tool result is failed iff its content matches any of: `"success": false` OR a 
 
 ## Configuration & hardening
 - Env knobs: `HO_FAIL_MARKERS` (comma-separated kinds `success_false|error_nonnull|status_error|exit_code`), `HO_EXTRA_FAIL_MARKERS` (pipe-separated literal substrings). If Hermes changes tool-result JSON, add the new error shape via `HO_EXTRA_FAIL_MARKERS` — no code change.
+- Cost: `config.json` (`rates` per model in USD/1M + `cost_multiplier`, env `HO_RATES`/`HO_COST_MULTIPLIER`) recomputes cost from tokens when rates exist; otherwise stored `estimated_cost_usd`. This dashboard only sees Hermes sessions — provider balances shared with other tools (IDE/CLI) will show more spend than this.
 - Schema guard: `SUPPORTED_SCHEMA = 33`. `/api/data` returns `schema.profiles` + `schema.mismatch`; mismatched profiles get a `schema_warning` and the rest keeps working. Bump `SUPPORTED_SCHEMA` when queries change.
 - Port fallback: if the requested port is busy, `main()` binds an ephemeral port and prints the real URL.
 - Tests: `python3 tests/test_aggregation.py` (31 checks, stdlib only, synthetic Hermes home fixture). Run after any `server.py` change.
