@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes Operate</title>
+<script>
+  (function(){
+    try{
+      var t = localStorage.getItem('ho-theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+      }
+      document.documentElement.dataset.theme = t;
+    }catch(e){ document.documentElement.dataset.theme = 'dark'; }
+  })();
+</script>
+<style>
+  :root{
+    --bg:#0b0e14; --card:#12161f; --card2:#0f131b; --border:#1e2530;
+    --fg:#e6edf3; --muted:#8b949e; --dim:#5b6470;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149; --blue:#58a6ff; --purple:#bc8cff;
+    --accent:#58a6ff; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --tl:88,166,255;
+    --dim2:#454d5a;
+    color-scheme:dark;
+  }
+  html[data-theme="light"]{
+    --bg:#f6f8fa; --card:#ffffff; --card2:#eef1f4; --border:#d8dee4;
+    --fg:#1f2328; --muted:#59636e; --dim:#8c959f;
+    --green:#1a7f37; --yellow:#9a6700; --red:#cf222e; --blue:#0969da; --purple:#8250df;
+    --accent:#0969da; --tl:9,105,218;
+    --dim2:#6d7681;
+    color-scheme:light;
+  }
+  html[data-theme="light"] .card:hover{border-color:#c6cdd6}
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; padding:20px 24px 60px;}
+  a{color:var(--accent); text-decoration:none}
+  .wrap{max-width:1600px; margin:0 auto}
+
+  /* header */
+  header{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; font-size:17px; letter-spacing:.2px}
+  .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--blue),var(--purple)); display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
+  .crumb{color:var(--dim); font-size:13px}
+  .spacer{flex:1}
+  .search{background:var(--card); border:1px solid var(--border); border-radius:8px; color:var(--fg); padding:7px 12px; width:220px; font-size:13px; outline:none}
+  .search:focus{border-color:var(--accent)}
+  input[type="date"]{background:var(--card); border:1px solid var(--border); border-radius:8px; color:var(--fg); padding:5px 8px; font-size:13px; outline:none; font-family:var(--mono)}
+  input[type="date"]:focus{border-color:var(--accent)}
+  .ranges{display:flex; gap:4px; background:var(--card); border:1px solid var(--border); border-radius:8px; padding:3px}
+  .ranges button{background:none;border:none;color:var(--muted);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer}
+  .ranges button.on{background:var(--blue); color:#fff; font-weight:600}
+  .updated{font-size:12px; color:var(--dim); font-family:var(--mono)}
+  #refresh{background:var(--card);border:1px solid var(--border);color:var(--fg);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px}
+  #refresh:hover{border-color:var(--accent)}
+  #refresh:disabled{opacity:.5}
+
+  /* KPI row */
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px}
+  .kpi{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px}
+  .kpi .label{font-size:11px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted)}
+  .kpi .value{font-size:24px; font-weight:700; font-family:var(--mono); margin-top:4px}
+  .kpi .sub{font-size:12px; color:var(--dim); margin-top:2px; font-family:var(--mono)}
+  .kpi.g .value{color:var(--green)} .kpi.r .value{color:var(--red)} .kpi.y .value{color:var(--yellow)}
+  .kpi.b .value{color:var(--blue)} .kpi.p .value{color:var(--purple)}
+
+  /* section */
+  h2{font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:26px 0 12px; display:flex; align-items:center; gap:8px}
+  h2 .n{background:var(--card); border:1px solid var(--border); color:var(--fg); border-radius:10px; font-family:var(--mono); font-size:11px; padding:1px 8px}
+  .toggle{margin-left:auto;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0;user-select:none}
+  .toggle input{appearance:none;width:30px;height:16px;border-radius:8px;background:var(--card2);border:1px solid var(--border);position:relative;cursor:pointer;transition:background .15s;margin:0;flex:0 0 auto}
+  .toggle input:checked{background:var(--blue)}
+  .toggle input::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .15s}
+  .toggle input:checked::after{left:15px}
+  .info-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;line-height:1}
+  .info-btn:hover{color:var(--accent)}
+  .c-info{font-size:13px;color:var(--dim2);padding:0 3px;line-height:1}
+  .c-info:hover{color:var(--accent)}
+  .modal-panel.ppanel{width:min(1100px,96vw)}
+  .pmodal-body{display:flex;min-height:52vh;overflow:hidden}
+  .pfiles{width:280px;flex:0 0 auto;border-right:1px solid var(--border);overflow-y:auto;padding:8px;max-height:72vh}
+  .pfiles button{display:block;width:100%;text-align:left;background:none;border:none;color:var(--muted);font-size:12px;padding:6px 8px;border-radius:6px;cursor:pointer;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pfiles button:hover{background:var(--card2);color:var(--fg)}
+  .pfiles button.on{background:var(--blue);color:#fff}
+  .pfiles .empty{padding:8px;color:var(--dim);font-size:12px}
+  .pcontent{flex:1;overflow:auto;padding:14px 18px;max-height:72vh}
+  .pcontent pre{margin:0;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
+  .modal-panel.ipanel{width:min(480px,94vw)}
+  .info-list{list-style:none;display:flex;flex-direction:column;gap:14px;padding:4px 0}
+  .info-list li{display:flex;gap:12px;align-items:flex-start}
+  .info-ic{font-size:18px;flex:0 0 auto;line-height:1.3}
+  .info-list b{display:block;font-size:13px;margin-bottom:2px}
+  .info-list p{margin:0;font-size:12px;color:var(--muted);line-height:1.5}
+  .info-note{margin:12px 0 0;font-size:11px;color:var(--dim)}
+  .info-note .att-dot{display:inline-block;vertical-align:-1px;margin-right:3px}
+
+  /* profile cards */
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; transition:border-color .15s}
+  .card:hover{border-color:#2d3646}
+  .card .top{display:flex; align-items:baseline; gap:8px; margin-bottom:10px}
+  .card .top .dot{align-self:center}
+  .dot{width:9px;height:9px;border-radius:50%; flex:0 0 auto}
+  .dot.active{background:var(--green); box-shadow:0 0 6px var(--green)}
+  .dot.idle{background:var(--yellow)} .dot.down{background:var(--red); box-shadow:0 0 6px var(--red)}
+  .card .name{font-weight:700; font-size:15px; line-height:1.2}
+  .card .st{font-size:12px; color:var(--muted); font-family:var(--mono); margin-left:auto; text-align:right; white-space:nowrap; line-height:1.2}
+  .card .st.bad{color:var(--red)} .card .st.warn{color:var(--yellow)}
+  .mini{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:8px 0 10px}
+  .mini .m{background:var(--card2); border-radius:8px; padding:7px 8px}
+  .mini .l{font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px}
+  .mini .v{font-size:15px; font-family:var(--mono); font-weight:600; margin-top:2px}
+  .ratebar{display:flex;height:5px;background:var(--card2);border-radius:3px;overflow:hidden;margin-bottom:8px}
+  .ratebar i{display:block;height:100%}
+  .ratebar i.ok{background:var(--green)}
+  .ratebar i.bad{background:var(--red)}
+  .ratebar.na{background:var(--dim)}
+  .card .last{font-size:12px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .card .last b{color:var(--muted); font-weight:500}
+  .models{display:flex; flex-wrap:wrap; gap:4px; margin-top:8px}
+  .chip{background:var(--card2); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:var(--mono); color:var(--muted); padding:2px 7px}
+  .spark{margin-top:8px; height:28px}
+
+  /* timeline */
+  .tl{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; overflow-x:auto}
+  .tl-row{display:flex; align-items:center; gap:10px; margin-bottom:5px}
+  .tl-row:last-child{margin-bottom:0}
+  .tl-name{width:110px; flex:0 0 auto; font-size:12px; font-family:var(--mono); color:var(--muted); text-align:right}
+  .tl-cells{display:flex; gap:2px; flex:1 1 auto; min-width:0}
+  .cell{height:16px; border-radius:2px; min-width:5px}
+  .tl-axis{display:flex; margin-top:6px; margin-left:120px}
+  .tl-axis span{font-size:10px; color:var(--dim); font-family:var(--mono); transform:rotate(-35deg); white-space:nowrap}
+  .legend{display:flex; gap:14px; font-size:11px; color:var(--muted); margin-top:8px; flex-wrap:wrap}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px}
+
+  /* two-col */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  @media (max-width:900px){ .cols{grid-template-columns:1fr} }
+  .panel{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px}
+  .bars{display:flex; flex-direction:column; gap:9px}
+  .bar-row{display:flex; align-items:center; gap:10px; font-size:12px}
+  .bar-label{width:190px; flex:0 0 auto; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .bar-track{flex:1; height:14px; background:var(--card2); border-radius:4px; overflow:hidden}
+  .bar-fill{height:100%; border-radius:4px}
+  .bar-meta{width:150px; flex:0 0 auto; color:var(--muted); font-family:var(--mono); font-size:11px; text-align:right}
+
+  /* lists & tables */
+  ul.list{list-style:none}
+  ul.list li{display:flex; gap:10px; align-items:baseline; padding:8px 0; border-bottom:1px solid var(--border)}
+  ul.list li:last-child{border-bottom:none}
+  .att-dot{width:8px;height:8px;border-radius:50%; flex:0 0 auto; align-self:center}
+  .att-dot.r{background:var(--red)} .att-dot.y{background:var(--yellow)}
+  .att-main{flex:1; min-width:0}
+  .att-title{font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .att-title b{color:var(--red); font-weight:600}
+  .att-sub{font-size:11px; color:var(--dim); font-family:var(--mono)}
+  .att-x{font-size:13px; font-family:var(--mono); color:var(--red); font-weight:600; flex:0 0 auto}
+  table{width:100%; border-collapse:collapse; font-size:12px}
+  th{font-size:10px; text-transform:uppercase; letter-spacing:.7px; color:var(--dim); text-align:left; padding:6px 8px; border-bottom:1px solid var(--border)}
+  td{padding:7px 8px; border-bottom:1px solid var(--border); font-family:var(--mono); color:var(--muted)}
+  tr:last-child td{border-bottom:none}
+  td.title{font-family:inherit; color:var(--fg); max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  td.num{text-align:right}
+  .empty{color:var(--dim); font-size:13px; padding:10px 0}
+  .pname{color:var(--blue); font-weight:600}
+  footer{margin-top:30px; color:var(--dim); font-size:11px; font-family:var(--mono)}
+
+  .linky{background:none;border:none;color:var(--accent);font:inherit;cursor:pointer;padding:0;text-decoration:underline dotted;text-underline-offset:2px}
+  .linky:hover{color:var(--blue)}
+  /* modal */
+  .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center}
+  .modal[hidden]{display:none}
+  .modal-back{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+  .modal-panel{position:relative;background:var(--card);border:1px solid var(--border);border-radius:14px;width:min(1150px,94vw);max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .modal-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .modal-head span{font-weight:700;font-size:15px}
+  .modal-close{margin-left:6px;background:var(--card2);border:1px solid var(--border);color:var(--fg);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;line-height:1}
+  #imodal-close{margin-left:auto}
+  .modal-close:hover{border-color:var(--accent)}
+  .filter{margin-left:6px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:12px;padding:5px 8px;font-family:var(--mono);outline:none;max-width:280px}
+  #callsession{margin-left:auto}
+  .filter:focus{border-color:var(--accent)}
+  .modal-sub{flex-basis:100%;order:5;margin-top:-10px;font-size:12px;color:var(--fg)}
+  .copy-btn{margin-left:auto;background:var(--card2);border:1px solid var(--border);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:var(--mono)}
+  .copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .modal-panel.dpanel{width:min(1250px,96vw)}
+  #dmodal-body{margin:0;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
+  #calltable td.summary{cursor:pointer}
+  #calltable td.summary:hover{color:var(--fg);text-decoration:underline}
+  .modal-body{overflow:auto;padding:0 18px 14px}
+  .modal-foot{padding:10px 18px;border-top:1px solid var(--border);color:var(--dim);font-size:11px;font-family:var(--mono)}
+  #calltable{width:100%;border-collapse:collapse;font-size:12px;min-width:980px}
+  #calltable th{position:sticky;top:0;background:var(--card);cursor:pointer;user-select:none;padding:8px;text-align:left;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);white-space:nowrap}
+  #calltable th:hover{color:var(--fg)}
+  #calltable th .arrow{opacity:.6;font-size:9px;margin-left:2px}
+  #calltable th.num,#calltable td.num{text-align:right}
+  #calltable td{padding:6px 8px;border-bottom:1px solid var(--border);font-family:var(--mono);vertical-align:top}
+  #calltable td.summary{font-family:inherit;color:var(--muted);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #calltable td.sess{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #calltable tr.failed td{background:rgba(248,81,73,.07)}
+  #calltable tr.failed td.summary{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><div class="logo">◆</div> Hermes <span class="crumb">Operate / All profiles</span></div>
+    <div class="spacer"></div>
+    <input class="search" id="search" placeholder="Search bots…" autocomplete="off">
+    <input type="date" id="date" title="Anchor date — ranges end on this day (clears to live view)">
+    <div class="ranges" id="ranges">
+      <button data-range="1">24h</button>
+      <button data-range="7" class="on">7d</button>
+      <button data-range="30">30d</button>
+      <button data-range="0">all</button>
+    </div>
+    <button id="refresh">Refresh</button>
+    <button id="theme" title="Toggle light/dark theme">☀️</button>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <h2>Bots <span class="n" id="botcount"></span>
+    <label class="toggle" title="Show/hide the aggregated All card"><input type="checkbox" id="all-toggle" checked><span>All summary</span></label>
+  </h2>
+  <div class="grid" id="cards"></div>
+
+  <h2>Activity timeline <span class="n" id="tl-range"></span></h2>
+  <div class="tl" id="timeline"></div>
+  <div class="legend" id="tl-legend"></div>
+
+  <div class="cols">
+    <div>
+      <h2>Where the money went · by model</h2>
+      <div class="panel"><div class="bars" id="model-bars"></div></div>
+    </div>
+    <div>
+      <h2>Tools the agents use</h2>
+      <div class="panel"><div class="bars" id="tool-bars"></div></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h2>Needs attention <button class="info-btn" id="attention-info" title="What is this list?">ⓘ</button></h2>
+      <div class="panel"><ul class="list" id="attention"></ul></div>
+    </div>
+    <div>
+      <h2>Most expensive sessions</h2>
+      <div class="panel"><table id="expensive"><thead><tr><th>Bot</th><th>Session</th><th>Model</th><th class="num">Tokens</th><th class="num">Cost</th><th>When</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-back" id="modal-back"></div>
+  <div class="modal-panel">
+    <div class="modal-head"><span id="modal-title">Tool calls</span>
+      <select id="callsession" class="filter" title="Filter by session"><option value="__all__">All sessions</option></select>
+      <select id="callfilter" class="filter" title="Filter by outcome">
+        <option value="all" selected>All</option>
+        <option value="success">Success</option>
+        <option value="failed">Failed</option>
+      </select>
+      <button class="modal-close" id="modal-close" title="Close">✕</button>
+      <div class="modal-sub" id="modal-sub"></div></div>
+    <div class="modal-body" id="modal-body">
+      <table id="calltable">
+        <thead><tr>
+          <th data-k="session">Session <span class="arrow"></span></th>
+          <th data-k="tool">Tool <span class="arrow"></span></th>
+          <th data-k="summary">Summary <span class="arrow"></span></th>
+          <th data-k="ts">Datetime <span class="arrow"></span></th>
+          <th data-k="tin" class="num">Tok. sent <span class="arrow"></span></th>
+          <th data-k="tout" class="num">Tok. recv <span class="arrow"></span></th>
+          <th data-k="dur" class="num">Time <span class="arrow"></span></th>
+          <th data-k="model">Model <span class="arrow"></span></th>
+        </tr></thead>
+        <tbody id="callbody"></tbody>
+      </table>
+    </div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div class="modal" id="dmodal" hidden>
+  <div class="modal-back" id="dmodal-back"></div>
+  <div class="modal-panel dpanel">
+    <div class="modal-head"><span id="dmodal-title">Message</span>
+      <button class="copy-btn" id="dmodal-copy" title="Copy message to clipboard">⧉ Copy</button>
+      <button class="modal-close" id="dmodal-close" title="Close">✕</button></div>
+    <div class="modal-body"><pre id="dmodal-body"></pre></div>
+  </div>
+</div>
+
+<div class="modal" id="imodal" hidden>
+  <div class="modal-back" id="imodal-back"></div>
+  <div class="modal-panel ipanel">
+    <div class="modal-head"><span id="imodal-title">Needs attention</span><button class="modal-close" id="imodal-close" title="Close">✕</button></div>
+    <div class="modal-body">
+      <ul class="info-list">
+        <li><span class="info-ic">⚠️</span><div><b>Failed tool calls</b><p>Sessions in the current date/range window that had failed tool results — detected from the JSON markers <code>"success": false</code>, a non-null <code>"error"</code> key, <code>"status": "error"</code>, or a non-zero <code>EXIT_CODE</code>. Ranked by failure count: top 8 per bot, 15 total.</p></div></li>
+        <li><span class="info-ic">🔴</span><div><b>Inactive bots</b><p>Bots with no activity in the window, or none in the last 24 hours, shown with their idle duration. A silent bot is worth attention.</p></div></li>
+        <li><span class="info-ic">📅</span><div><b>Follows the date range window</b><p>Change the date/range selector and the list reshuffles. Cron failures are not included — no executions are recorded yet.</p></div></li>
+      </ul>
+      <p class="info-note">Dot severity: <span class="att-dot r"></span> 5+ failures or no activity &nbsp;·&nbsp; <span class="att-dot y"></span> 1–4 failures</p>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="pmodal" hidden>
+  <div class="modal-back" id="pmodal-back"></div>
+  <div class="modal-panel ppanel">
+    <div class="modal-head"><span id="pmodal-title">Skills & key files</span><button class="modal-close" id="pmodal-close" title="Close">✕</button></div>
+    <div class="pmodal-body">
+      <div class="pfiles" id="pfiles"></div>
+      <div class="pcontent" id="pcontent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let RANGE = 7, DATE = "", DATA = null, TIMER = null;
+
+const fmtNum = n => n == null ? "–" : Number(n).toLocaleString("en-US");
+const fmtMoney = n => "$" + (n == null ? "0" : Number(n).toFixed(2));
+const fmtTok = n => n >= 1e9 ? (n/1e9).toFixed(2)+"B" : n >= 1e6 ? (n/1e6).toFixed(2)+"M" : n >= 1e3 ? (n/1e3).toFixed(1)+"k" : String(n||0);
+const fmtWhen = ts => {
+  if (!ts) return "–";
+  const d = new Date(ts*1000), now = Date.now()/1000, age = now - ts;
+  const ago = age < 60 ? Math.round(age)+"s" : age < 3600 ? Math.round(age/60)+"m" : age < 86400 ? Math.round(age/3600)+"h" : Math.round(age/86400)+"d";
+  return `${ago} ago · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}`;
+};
+const fmtDT = ts => {
+  const d = new Date(ts*1000);
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const rateColor = r => r >= .95 ? "var(--green)" : r >= .8 ? "var(--yellow)" : "var(--red)";
+const rateClass = r => r >= .95 ? "" : r >= .8 ? "warn" : "bad";
+
+function kpis(t){
+  const sr = (t.success_rate*100).toFixed(1);
+  const items = [
+    ["Sessions", fmtNum(t.sessions), "", "b"],
+    ["Tool calls", fmtNum(t.tool_calls), "", ""],
+    ["Success rate", sr+"%", `${fmtNum(t.tool_results)} tool results`, t.success_rate>=.95?"g":t.success_rate>=.8?"y":"r"],
+    ["Failed results", fmtNum(t.failed), "", t.failed?"r":"g"],
+    ["Tokens", fmtTok(t.tokens), "in+out+cache", "p"],
+    ["Est. cost", fmtMoney(t.est_cost), "estimated", "y"],
+    ["Cron runs", fmtNum(t.cron.total), `${t.cron.failed} failed · ${t.cron.missed} missed`, t.cron.failed?"r":""],
+  ];
+  $("#kpis").innerHTML = items.map(([l,v,s,c]) =>
+    `<div class="kpi ${c}"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${esc(s)}</div></div>`).join("");
+}
+
+function spark(values, max){
+  if (!values || values.length < 2) return `<svg class="spark" width="100%" height="28" viewBox="0 0 100 28" preserveAspectRatio="none"><line x1="0" y1="27" x2="100" y2="27" stroke="#1e2530" stroke-width="1"/></svg>`;
+  const w=100, h=26, n=values.length;
+  const pts = values.map((v,i)=>[i/(n-1)*w, h-2-(v/max)*(h-4)]).map(p=>p.map(x=>x.toFixed(1)).join(",")).join(" ");
+  return `<svg class="spark" width="100%" height="28" viewBox="0 0 100 28" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="var(--blue)" stroke-width="2"/>
+    <polygon points="0,26 ${pts} 100,26" fill="var(--blue)" opacity="0.12"/>
+  </svg>`;
+}
+
+const allProfile = () => {
+  const t = DATA.totals;
+  let last = null, lastAct = 0;
+  DATA.profiles.forEach(p => { if (p.last_activity_at && p.last_activity_at > lastAct) { lastAct = p.last_activity_at; last = p; } });
+  const active = DATA.profiles.filter(p => p.status === "active").length;
+  return {
+    name: "All",
+    profile_key: "all",
+    status: active ? "active" : DATA.profiles.some(p => p.status === "idle") ? "idle" : "down",
+    status_detail: `${DATA.profiles.length} bots · ${active} active`,
+    sessions: t.sessions, tool_calls: t.tool_calls, tokens: t.tokens, est_cost: t.est_cost,
+    failed: t.failed, tool_results: t.tool_results, success_rate: t.success_rate,
+    last_title: last ? last.last_title : null, last_activity_at: last ? last.last_activity_at : null,
+    models: DATA.models.map(m => ({ model: m.model, cost: m.cost })),
+    _allDaily: DATA.buckets.map(b => DATA.profiles.reduce((s, p) => s + (DATA.activity[p.name]?.[b] || 0), 0))
+  };
+};
+
+function cards(){
+  const q = ($("#search").value||"").toLowerCase();
+  const showAll = $("#all-toggle").checked;
+  let list = DATA.profiles.filter(p => p.name.toLowerCase().includes(q));
+  if (showAll && (!q || "all".includes(q))) list = [allProfile(), ...list];
+  $("#botcount").textContent = list.length;
+  $("#cards").innerHTML = list.map(p => {
+    const daily = p._allDaily || DATA.buckets.map(b => DATA.activity[p.name]?.[b] || 0);
+    const max = Math.max(...daily, 1);
+    const rate = p.tool_results ? (p.success_rate*100).toFixed(1) : "–";
+    const models = p.models.slice(0,3).map(m => `<span class="chip" title="${esc(m.model)}">${esc(m.model.split("/").pop())} · ${fmtMoney(m.cost)}</span>`).join("");
+    return `<div class="card">
+      <div class="top"><span class="dot ${p.status}"></span><span class="name">${esc(p.name)}</span>
+        <button class="info-btn c-info" data-profile="${p.profile_key || p.name}" title="Skills & key files">ⓘ</button>
+        <span class="st ${p.status==="down"?"bad":p.status==="idle"?"warn":""}">${esc(p.status_detail)}</span></div>
+      <div class="mini">
+        <div class="m"><div class="l">Sessions</div><div class="v">${fmtNum(p.sessions)}</div></div>
+        <div class="m"><div class="l">Tools</div><div class="v">${fmtNum(p.tool_calls)}</div></div>
+        <div class="m"><div class="l">Tokens</div><div class="v">${fmtTok(p.tokens)}</div></div>
+        <div class="m"><div class="l">Cost</div><div class="v">${fmtMoney(p.est_cost)}</div></div>
+      </div>
+      <div class="ratebar ${p.tool_results ? "" : "na"}"><i class="ok" style="width:${p.tool_results ? (p.success_rate*100).toFixed(1) : 0}%"></i><i class="bad" style="width:${p.tool_results ? ((1-p.success_rate)*100).toFixed(1) : 0}%"></i></div>
+      ${p.tool_results ? `
+      <div class="last"><button class="linky" data-profile="${p.profile_key || p.name}" data-filter="success" title="Show successful tool calls">${rate}% success</button> · <button class="linky" data-profile="${p.profile_key || p.name}" data-filter="failed" title="Show failed tool calls">${p.failed} failed</button> · ${p.tool_results} tool results</div>
+      <div class="last"><b>Last:</b> ${esc(p.last_title || "—")}</div>
+      <div class="last">${fmtWhen(p.last_activity_at)}</div>
+      ${models ? `<div class="models">${models}</div>` : ""}
+      ${spark(daily, max)}
+      ` : ""}
+    </div>`;
+  }).join("") || `<div class="empty">No bots match “${esc(q)}”.</div>`;
+}
+
+function downsample(buckets, max=48){
+  if (buckets.length <= max) return buckets;
+  const step = Math.ceil(buckets.length/max);
+  return buckets.filter((_,i)=>i%step===0);
+}
+
+function timeline(){
+  const profs = DATA.profiles.filter(p => p.sessions > 0);
+  const buckets = downsample(DATA.buckets, 48);
+  const max = Math.max(1, ...profs.map(p => Math.max(...buckets.map(b => DATA.activity[p.name]?.[b] || 0))));
+  const label = (DATA.range_days ? DATA.range_days+"d" : "all time") + (DATA.granularity==="hour" ? " · hourly" : " · daily");
+  $("#tl-range").textContent = label + (DATA.window_label ? " · " + DATA.window_label : "");
+  let axis = `<div class="tl-axis">${buckets.map(b=>`<span style="flex:1">${esc(b.slice(5))}</span>`).join("")}</div>`;
+  let rows = profs.map(p => {
+    const cells = buckets.map(b => {
+      const v = DATA.activity[p.name]?.[b] || 0;
+      const op = v ? .10 + (v/max)*.85 : 0;
+      return `<div class="cell" style="background:rgba(var(--tl),${op.toFixed(2)})" title="${esc(b)} · ${v} session${v===1?"":"s"}"></div>`;
+    }).join("");
+    return `<div class="tl-row"><div class="tl-name">${esc(p.name)}</div><div class="tl-cells">${cells}</div></div>`;
+  }).join("");
+  $("#timeline").innerHTML = rows + axis;
+  $("#tl-legend").innerHTML = `<span><i style="background:rgba(var(--tl),.9)"></i>high activity</span>
+    <span><i style="background:rgba(var(--tl),.25)"></i>low activity</span>
+    <span><i style="background:var(--card2)"></i>no activity</span>
+    <span>${profs.length} bots active in range</span>`;
+}
+
+function modelBars(){
+  const items = DATA.models.slice(0,8);
+  const max = Math.max(...items.map(m=>m.cost), 1);
+  $("#model-bars").innerHTML = items.length ? items.map(m =>
+    `<div class="bar-row"><div class="bar-label" title="${esc(m.model)}">${esc(m.model)}</div>
+     <div class="bar-track"><div class="bar-fill" style="width:${(m.cost/max*100).toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div>
+     <div class="bar-meta">${fmtNum(m.runs)} runs · ${fmtMoney(m.cost)}</div></div>`).join("")
+    : `<div class="empty">No model usage in this range.</div>`;
+}
+
+function toolBars(){
+  const items = DATA.tools.slice(0,12);
+  const max = Math.max(...items.map(t=>t.count), 1);
+  $("#tool-bars").innerHTML = items.length ? items.map(t =>
+    `<div class="bar-row"><div class="bar-label">${esc(t.tool)}</div>
+     <div class="bar-track"><div class="bar-fill" style="width:${(t.count/max*100).toFixed(1)}%;background:var(--blue)"></div></div>
+     <div class="bar-meta">${fmtNum(t.count)} calls</div></div>`).join("")
+    : `<div class="empty">No tool usage in this range.</div>`;
+}
+
+function attention(){
+  const list = DATA.attention;
+  $("#attention").innerHTML = list.length ? list.map(a => {
+    if (a.down) return `<li><span class="att-dot r"></span><div class="att-main"><div class="att-title"><b>${esc(a.profile)}</b> — ${esc(a.down)}</div><div class="att-sub">${a.last_seen ? "last seen " + fmtWhen(a.last_seen) : "never used"}</div></div><span class="att-x">!</span></li>`;
+    return `<li><span class="att-dot ${a.failures>=5?"r":"y"}"></span><div class="att-main">
+      <div class="att-title"><span class="pname">${esc(a.profile)}</span> · ${esc(a.title || "(untitled)")}</div>
+      <div class="att-sub">${esc(a.model||"")} · ${fmtWhen(a.started_at)}</div></div>
+      <span class="att-x">${a.failures}✗</span></li>`;
+  }).join("") : `<li class="empty">All clear — no failed tool results in this range. 🎉</li>`;
+}
+
+function expensive(){
+  const rows = DATA.expensive.map(e =>
+    `<tr><td class="pname">${esc(e.profile)}</td><td class="title" title="${esc(e.title)}">${esc(e.title||"—")}</td>
+     <td>${esc(e.model||"")}</td><td class="num">${fmtTok(e.tokens)}</td><td class="num">${fmtMoney(e.cost)}</td><td>${fmtWhen(e.started_at)}</td></tr>`).join("");
+  $("#expensive tbody").innerHTML = rows || `<tr><td colspan="6" class="empty">No billed sessions in this range.</td></tr>`;
+}
+
+function render(){
+  if (!DATA) return;
+  kpis(DATA.totals);
+  cards();
+  timeline();
+  modelBars();
+  toolBars();
+  attention();
+  expensive();
+  $("#foot").textContent = `Hermes Operate · data from ~/.hermes state DBs (read-only) · generated ${DATA.generated_at} · window ${DATA.window_label}${DATA.date ? " (anchored to " + DATA.date + ")" : " (live)"} · auto-refreshes every 30s`;
+}
+
+async function load(){
+  const btn = $("#refresh"); btn.disabled = true; btn.textContent = "…";
+  try{
+    const r = await fetch(`/api/data?range=${RANGE}&date=${DATE}`);
+    DATA = await r.json();
+    render();
+  }catch(e){
+    $("#kpis").innerHTML = `<div class="kpi r"><div class="label">Error</div><div class="value">!</div><div class="sub">${esc(e.message)}</div></div>`;
+  }
+  btn.disabled = false; btn.textContent = "Refresh";
+}
+
+$("#ranges").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  RANGE = +b.dataset.range;
+  document.querySelectorAll("#ranges button").forEach(x=>x.classList.toggle("on", x===b));
+  load();
+});
+$("#date").addEventListener("change", e => {
+  DATE = e.target.value || "";            // empty date -> back to live view
+  RANGE = 1;                              // picking a date resets range to 24h
+  document.querySelectorAll("#ranges button").forEach(x=>x.classList.toggle("on", +x.dataset.range===1));
+  load();
+});
+$("#refresh").addEventListener("click", load);
+const themeBtn = $("#theme");
+const syncTheme = () => { themeBtn.textContent = document.documentElement.dataset.theme === "light" ? "🌙" : "☀️"; };
+themeBtn.addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  try{ localStorage.setItem("ho-theme", next); }catch(e){}
+  syncTheme();
+});
+syncTheme();
+$("#search").addEventListener("input", cards);
+
+/* --- tool-call modal --- */
+let MODAL = { rows: [], sort: "ts", dir: -1 };
+const openCalls = async (profile, filter = "all") => {
+  $("#modal-title").textContent = `${profile === "all" ? "All" : profile} · tool calls`;
+  MODAL.profile = profile;
+  $("#callfilter").value = filter;
+  $("#modal-foot").textContent = "";
+  $("#modal").hidden = false;
+  $("#callbody").innerHTML = `<tr><td colspan="8" class="empty">Loading…</td></tr>`;
+  try {
+    const r = await fetch(`/api/toolcalls?profile=${encodeURIComponent(profile)}&range=${RANGE}&date=${DATE}`);
+    const d = await r.json();
+    MODAL.rows = d.calls || [];
+    const n = d.total || MODAL.rows.length;
+    const titles = [...new Set((d.calls || []).map(c => c.session_title || ""))].sort((a, b) => a.localeCompare(b));
+    $("#callsession").innerHTML = `<option value="__all__">All sessions</option>` +
+      titles.map(t => `<option value="${esc(t)}">${esc(t || "(untitled)")}</option>`).join("");
+    $("#callsession").value = "__all__";
+    MODAL.subBase = `${d.messages ?? 0} messages, ${n} tool calls`;
+    $("#modal-foot").textContent = "";
+    MODAL.footBase =
+      (d.truncated ? `${n} tool calls · showing ${MODAL.rows.length}` : `${n} tool calls`) +
+      ` · ${d.window_label || ""} · tokens are estimates (payload chars ÷ 4)`;
+    renderCalls();
+  } catch (e) {
+    $("#callbody").innerHTML = `<tr><td colspan="8" class="empty">Error: ${esc(e.message)}</td></tr>`;
+  }
+};
+const renderCalls = () => {
+  const { sort: key, dir } = MODAL;
+  const sess = $("#callsession").value;
+  const filter = $("#callfilter").value;
+  let rows = [...MODAL.rows];
+  if (sess !== "__all__") rows = rows.filter(c => (c.session_title || "") === sess);
+  if (filter === "success") rows = rows.filter(c => !c.failed);
+  else if (filter === "failed") rows = rows.filter(c => c.failed);
+  rows.sort((a, b) => {
+    const x = a[key], y = b[key];
+    let c;
+    if (x == null && y == null) c = 0;
+    else if (x == null) c = 1;
+    else if (y == null) c = -1;
+    else if (typeof x === "string") c = String(x).localeCompare(String(y));
+    else c = x - y;
+    return c * dir;
+  });
+  const emptyMsg = filter === "failed" ? "No failed tool calls in this window." : filter === "success" ? "No successful tool calls in this window." : "No tool calls in this window.";
+  $("#callbody").innerHTML = rows.map(c =>
+    `<tr class="${c.failed ? "failed" : ""}">
+      <td class="sess" title="${esc(c.session_title)}">${esc(c.session_title || "(untitled)")}</td>
+      <td>${esc(c.tool)}</td>
+      <td class="summary" data-sid="${esc(c.sid)}" data-call="${esc(c.call)}" data-profile="${esc(c.profile || MODAL.profile)}" title="Click to view full message">${esc(c.summary) || "—"}</td>
+      <td>${fmtDT(c.ts)}</td>
+      <td class="num">${fmtNum(c.tin)}</td>
+      <td class="num">${fmtNum(c.tout)}</td>
+      <td class="num">${c.dur == null ? "—" : c.dur + "s"}</td>
+      <td title="${esc(c.model)}">${esc((c.model || "").split("/").pop())}</td>
+    </tr>`).join("") || `<tr><td colspan="8" class="empty">${emptyMsg}</td></tr>`;
+  document.querySelectorAll("#calltable th").forEach(th => {
+    th.querySelector(".arrow").textContent = th.dataset.k === key ? (dir < 0 ? "▼" : "▲") : "";
+  });
+  if (MODAL.footBase) {
+    const extra = filter === "all" ? "" : ` · ${rows.length} ${filter} of ${MODAL.rows.length}`;
+    $("#modal-foot").textContent = MODAL.footBase + extra;
+  }
+  $("#modal-sub").textContent = MODAL.subBase + (sess !== "__all__" ? ` · session: ${sess}` : "");
+};
+document.querySelectorAll("#calltable th").forEach(th => th.addEventListener("click", () => {
+  const k = th.dataset.k;
+  if (MODAL.sort === k) MODAL.dir *= -1;
+  else { MODAL.sort = k; MODAL.dir = k === "ts" ? -1 : 1; }
+  renderCalls();
+}));
+$("#callfilter").addEventListener("change", renderCalls);
+$("#callsession").addEventListener("change", renderCalls);
+$("#all-toggle").addEventListener("change", () => {
+  try { localStorage.setItem("ho-all", $("#all-toggle").checked ? "1" : "0"); } catch (e) {}
+  cards();
+});
+try { if (localStorage.getItem("ho-all") === "0") $("#all-toggle").checked = false; } catch (e) {}
+
+/* --- full-message detail modal --- */
+let DMODAL_CONTENT = "";
+const openDetail = async (profile, sid, call) => {
+  $("#dmodal-title").textContent = "Message";
+  $("#dmodal-copy").textContent = "⧉ Copy";
+  $("#dmodal-body").textContent = "Loading…";
+  $("#dmodal").hidden = false;
+  try {
+    const r = await fetch(`/api/toolmessage?profile=${encodeURIComponent(profile)}&sid=${encodeURIComponent(sid)}&call=${encodeURIComponent(call)}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    let text = d.content || "";
+    try { text = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* keep raw text */ }
+    DMODAL_CONTENT = text;
+    $("#dmodal-body").textContent = text;
+    $("#dmodal-title").textContent = (d.tool ? d.tool + " · " : "") + "full message";
+  } catch (e) {
+    $("#dmodal-body").textContent = "Error: " + e.message;
+  }
+};
+$("#dmodal-copy").addEventListener("click", async () => {
+  if (!DMODAL_CONTENT) return;
+  try {
+    await navigator.clipboard.writeText(DMODAL_CONTENT);
+    $("#dmodal-copy").textContent = "✓ Copied";
+  } catch (e) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = DMODAL_CONTENT;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); ta.remove();
+      $("#dmodal-copy").textContent = "✓ Copied";
+    } catch (e2) { $("#dmodal-copy").textContent = "Copy failed"; }
+  }
+  setTimeout(() => { $("#dmodal-copy").textContent = "⧉ Copy"; }, 1500);
+});
+document.addEventListener("click", e => {
+  const ci = e.target.closest(".c-info");
+  if (ci) { openProfileFiles(ci.dataset.profile); return; }
+  const b = e.target.closest(".linky");
+  if (b) { openCalls(b.dataset.profile, b.dataset.filter || "all"); return; }
+  const td = e.target.closest("td.summary");
+  if (td && td.dataset.call) { openDetail(td.dataset.profile || MODAL.profile, td.dataset.sid, td.dataset.call); return; }
+  if (e.target.closest("#modal-close") || e.target.closest("#modal-back")) $("#modal").hidden = true;
+  if (e.target.closest("#dmodal-close") || e.target.closest("#dmodal-back")) $("#dmodal").hidden = true;
+  if (e.target.closest("#imodal-close") || e.target.closest("#imodal-back")) $("#imodal").hidden = true;
+  if (e.target.closest("#attention-info")) $("#imodal").hidden = false;
+  if (e.target.closest("#pmodal-close") || e.target.closest("#pmodal-back")) $("#pmodal").hidden = true;
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { $("#modal").hidden = true; $("#dmodal").hidden = true; $("#imodal").hidden = true; $("#pmodal").hidden = true; }
+});
+
+/* --- profile skills & key files modal --- */
+let PFILE_LIST = [], P_PROFILE = "";
+const openProfileFiles = async profile => {
+  P_PROFILE = profile;
+  $("#pmodal-title").textContent = `${profile === "all" ? "All" : profile} · skills & key files`;
+  $("#pcontent").innerHTML = `<pre>Loading…</pre>`;
+  $("#pfiles").innerHTML = "";
+  $("#pmodal").hidden = false;
+  try {
+    const r = await fetch(`/api/profilefiles?profile=${encodeURIComponent(profile)}`);
+    const d = await r.json();
+    PFILE_LIST = d.files || [];
+    $("#pfiles").innerHTML = PFILE_LIST.map((f, i) => `<button data-i="${i}" class="${i === 0 ? "on" : ""}">${esc(f.label)}</button>`).join("") || `<div class="empty">No key files for this profile.</div>`;
+    if (PFILE_LIST.length) openProfileFile(PFILE_LIST[0]);
+  } catch (e) {
+    $("#pcontent").innerHTML = `<pre>Error: ${esc(e.message)}</pre>`;
+  }
+};
+const openProfileFile = async f => {
+  document.querySelectorAll("#pfiles button").forEach(b => b.classList.toggle("on", +b.dataset.i === PFILE_LIST.indexOf(f)));
+  $("#pcontent").innerHTML = `<pre>Loading…</pre>`;
+  try {
+    const r = await fetch(`/api/profilefile?profile=${encodeURIComponent(P_PROFILE)}&file=${encodeURIComponent(f.rel)}`);
+    const d = await r.json();
+    $("#pcontent").innerHTML = d.error ? `<pre>${esc(d.error)}</pre>` : `<pre>${esc(d.content)}</pre>`;
+  } catch (e) {
+    $("#pcontent").innerHTML = `<pre>Error: ${esc(e.message)}</pre>`;
+  }
+};
+$("#pfiles").addEventListener("click", e => {
+  const b = e.target.closest("button[data-i]");
+  if (b) openProfileFile(PFILE_LIST[+b.dataset.i]);
+});
+
+load();
+TIMER = setInterval(load, 30000);
+</script>
+</body>
+</html>
