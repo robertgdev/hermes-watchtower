@@ -187,6 +187,20 @@
   .actbtn:hover{border-color:var(--accent);color:var(--accent)}
   .pfiles button .ameta{display:block;font-size:10px;color:var(--dim);margin-top:2px;white-space:normal;line-height:1.35}
   .pfiles button.on .ameta{color:#dbe4f0}
+  .ahead{display:flex;align-items:center;gap:6px;padding:2px 8px 8px;border-bottom:1px solid var(--border);margin-bottom:6px;font-size:11px;color:var(--muted)}
+  .ahead label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .arow{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:6px}
+  .arow:hover{background:var(--card2)}
+  .arow.sel{background:var(--card2)}
+  .arow input{margin-top:3px;flex:0 0 auto;accent-color:var(--accent);cursor:pointer}
+  .arow .atext{cursor:pointer;min-width:0;color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .arow .atext:hover{color:var(--fg)}
+  .arow .ameta{display:block;font-size:10px;color:var(--dim);margin-top:2px;white-space:normal;line-height:1.35}
+  .actbtn.danger{color:var(--red);border-color:var(--red)}
+  .actbtn.danger:hover{background:var(--red);color:#fff}
+  .delpanel{max-width:560px}
+  .del-list{font-family:var(--mono);font-size:12px;max-height:220px;overflow:auto;white-space:pre-wrap;margin:8px 0;color:var(--muted)}
+  .del-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
   .modal-close:hover{border-color:var(--accent)}
   .filter{margin-left:6px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:12px;padding:5px 8px;font-family:var(--mono);outline:none;max-width:280px}
   #callsession{margin-left:auto}
@@ -342,11 +356,28 @@
         <option value="0">forever</option>
       </select>
       <button id="audit-run" class="actbtn">Audit Skills</button>
+      <button id="delete-skills" class="actbtn danger" hidden title="Move the selected skills to the trash directory">Delete Skills</button>
       <button class="modal-close" id="amodal-close" title="Close">✕</button>
     </div>
     <div class="pmodal-body">
       <div class="pfiles" id="aresults"><div class="empty">Press “Audit Skills” to scan.</div></div>
       <div class="pcontent" id="apreview"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="delmodal" hidden>
+  <div class="modal-back" id="delmodal-back"></div>
+  <div class="modal-panel delpanel">
+    <div class="modal-head"><span id="delmodal-title">Delete skills</span><button class="modal-close" id="delmodal-close" title="Close">✕</button></div>
+    <div class="modal-body">
+      <p id="del-question" style="margin:0 0 10px;font-size:14px"><b>Are you sure you wish to delete these unused skills?</b></p>
+      <div class="del-list" id="del-list"></div>
+      <p class="info-note" style="margin:10px 0 0">They are moved to <code>~/.hermes/trash/watchtower-skills/&lt;timestamp&gt;/</code> — restore by moving them back.</p>
+      <div class="del-actions">
+        <button class="actbtn" id="del-cancel">Cancel</button>
+        <button class="actbtn danger" id="del-confirm">Delete</button>
+      </div>
     </div>
   </div>
 </div>
@@ -705,9 +736,10 @@ document.addEventListener("click", e => {
   if (e.target.closest("#attention-info")) $("#imodal").hidden = false;
   if (e.target.closest("#pmodal-close") || e.target.closest("#pmodal-back")) $("#pmodal").hidden = true;
   if (e.target.closest("#amodal-close") || e.target.closest("#amodal-back")) $("#amodal").hidden = true;
+  if (e.target.closest("#delmodal-close") || e.target.closest("#delmodal-back")) $("#delmodal").hidden = true;
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { $("#modal").hidden = true; $("#dmodal").hidden = true; $("#imodal").hidden = true; $("#pmodal").hidden = true; $("#amodal").hidden = true; }
+  if (e.key === "Escape") { $("#modal").hidden = true; $("#dmodal").hidden = true; $("#imodal").hidden = true; $("#pmodal").hidden = true; $("#amodal").hidden = true; $("#delmodal").hidden = true; }
 });
 
 /* --- profile skills & key files modal --- */
@@ -745,22 +777,39 @@ $("#pfiles").addEventListener("click", e => {
 });
 
 /* --- actions modal (wrench): per-bot maintenance actions --- */
-let A_PROFILE = "", AUDIT_LIST = [];
-const A_INTRO = `<pre>Skills installed for this bot, checked against the skill loads and edits recorded in its session history. “Audit Skills” lists the ones never used, or not used within the selected window (30 days / 90 days / forever). Click a skill to read its SKILL.md.
+let A_PROFILE = "", AUDIT_LIST = [], AUDIT_UNUSED = [], A_HEAD = "", A_SEL = new Set(), A_BY_KEY = new Map();
+const A_INTRO = `<pre>Skills installed for this bot, checked against the skill loads and edits recorded in its session history. “Audit Skills” lists the ones never used, or not used within the selected window (30 days / 90 days / forever). Click a skill name to read its SKILL.md.
 
-Read-only: nothing here deletes or edits anything.</pre>`;
+Tick skills to select them; “Delete Skills” appears once something is selected and always asks for confirmation first. Deleted skills are moved to ~/.hermes/trash/watchtower-skills/&lt;timestamp&gt;/.</pre>`;
+const aKey = s => `${s.profile || A_PROFILE}:${s.rel}`;
+const updateDeleteBtn = () => {
+  const n = A_SEL.size, b = $("#delete-skills");
+  b.hidden = n === 0;
+  b.textContent = `Delete Skills (${n})`;
+};
+const renderAudit = () => {
+  if (!AUDIT_UNUSED.length) return;
+  const allOn = A_SEL.size === AUDIT_UNUSED.length;
+  const head = `<div class="ahead"><label><input type="checkbox" id="a-all"${allOn ? " checked" : ""}> select all</label><span style="margin-left:auto">${A_SEL.size} selected</span></div>`;
+  $("#aresults").innerHTML = A_HEAD + head + AUDIT_UNUSED.map((s, i) => {
+    const k = aKey(s), on = A_SEL.has(k);
+    return `<div class="arow${on ? " sel" : ""}"><input type="checkbox" data-k="${i}"${on ? " checked" : ""} title="Select ${esc(s.name)}"><div class="atext" data-i="${i}" title="Read SKILL.md"><span>${esc(s.profile ? s.profile + " · " + s.name : s.name)}</span><span class="ameta">${s.last_used ? "last used " + fmtDT(s.last_used) : "never used"}${s.count ? ` · ${s.count} load${s.count === 1 ? "" : "s"}` : ""}</span></div></div>`;
+  }).join("");
+  updateDeleteBtn();
+};
 const openActions = profile => {
-  A_PROFILE = profile; AUDIT_LIST = [];
+  A_PROFILE = profile; AUDIT_LIST = []; AUDIT_UNUSED = []; A_HEAD = ""; A_SEL = new Set(); A_BY_KEY = new Map();
   $("#amodal-title").textContent = `${profile === "all" ? "All" : profile} · actions`;
   $("#aresults").innerHTML = `<div class="empty">Press “Audit Skills” to scan.</div>`;
   $("#apreview").innerHTML = A_INTRO;
+  updateDeleteBtn();
   $("#amodal").hidden = false;
 };
 $("#cards").addEventListener("click", e => {
   const b = e.target.closest(".c-act");
   if (b) openActions(b.dataset.profile);
 });
-$("#audit-run").addEventListener("click", async () => {
+const runAudit = async note => {
   const days = $("#audit-days").value;
   $("#aresults").innerHTML = `<div class="empty">Auditing…</div>`;
   try {
@@ -768,25 +817,46 @@ $("#audit-run").addEventListener("click", async () => {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     AUDIT_LIST = d.skills || [];
-    const unused = AUDIT_LIST.filter(s => s.unused);
+    AUDIT_UNUSED = AUDIT_LIST.filter(s => s.unused);
+    A_BY_KEY = new Map(AUDIT_UNUSED.map(s => [aKey(s), s]));
+    A_SEL = new Set([...A_SEL].filter(k => A_BY_KEY.has(k)));
     const scope = days === "0" ? "never used" : `unused in the last ${days} days`;
-    const head = `<div class="empty" style="color:var(--fg)"><b>${unused.length}</b> of ${d.total} skills ${scope}</div>`;
-    if (!unused.length) {
-      $("#aresults").innerHTML = head + `<div class="empty">Every installed skill was used within the window.</div>`;
-      $("#apreview").innerHTML = `<pre>Nothing to clean up.</pre>`;
+    A_HEAD = `<div class="empty" style="color:var(--fg)"><b>${AUDIT_UNUSED.length}</b> of ${d.total} skills ${scope}</div>`;
+    if (!AUDIT_UNUSED.length) {
+      $("#aresults").innerHTML = A_HEAD + `<div class="empty">Every installed skill was used within the window.</div>`;
+      $("#apreview").innerHTML = note ? `<pre>${esc(note)}</pre>` : `<pre>Nothing to clean up.</pre>`;
+      updateDeleteBtn();
       return;
     }
-    $("#aresults").innerHTML = head + unused.map((s, i) => `<button data-i="${i}"><span>${esc(s.profile ? s.profile + " · " + s.name : s.name)}</span><span class="ameta">${s.last_used ? "last used " + fmtDT(s.last_used) : "never used"}${s.count ? ` · ${s.count} load${s.count === 1 ? "" : "s"}` : ""}</span></button>`).join("");
+    renderAudit();
+    $("#apreview").innerHTML = note ? `<pre>${esc(note)}</pre>` : A_INTRO;
   } catch (err) {
     $("#aresults").innerHTML = `<div class="empty">Error: ${esc(err.message)}</div>`;
   }
+};
+$("#audit-run").addEventListener("click", () => runAudit());
+$("#aresults").addEventListener("change", e => {
+  if (e.target.id === "a-all") {
+    if (e.target.checked) AUDIT_UNUSED.forEach(s => A_SEL.add(aKey(s)));
+    else A_SEL.clear();
+    renderAudit();
+    return;
+  }
+  const cb = e.target.closest("input[type=checkbox][data-k]");
+  if (!cb) return;
+  const s = AUDIT_UNUSED[+cb.dataset.k];
+  if (!s) return;
+  const k = aKey(s);
+  if (cb.checked) A_SEL.add(k); else A_SEL.delete(k);
+  renderAudit();
 });
 $("#aresults").addEventListener("click", async e => {
-  const b = e.target.closest("button[data-i]");
-  if (!b) return;
-  const s = AUDIT_LIST.filter(x => x.unused)[+b.dataset.i];
+  const t = e.target.closest(".atext[data-i]");
+  if (!t) return;
+  const s = AUDIT_UNUSED[+t.dataset.i];
   if (!s) return;
-  document.querySelectorAll("#aresults button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll("#aresults .atext").forEach(x => (x.style.color = ""));
+  t.style.color = "var(--fg)";
   $("#apreview").innerHTML = `<pre>Loading…</pre>`;
   try {
     const r = await fetch(`/api/profilefile?profile=${encodeURIComponent(A_PROFILE)}&file=${encodeURIComponent(s.rel)}`);
@@ -796,6 +866,44 @@ $("#aresults").addEventListener("click", async e => {
     $("#apreview").innerHTML = `<pre>Error: ${esc(err.message)}</pre>`;
   }
 });
+
+/* --- delete confirmation --- */
+$("#delete-skills").addEventListener("click", () => {
+  const list = [...A_SEL].map(k => A_BY_KEY.get(k)).filter(Boolean);
+  if (!list.length) return;
+  $("#del-list").textContent = list.map(s => (s.profile ? s.profile + " · " : "") + s.name + "  (" + s.rel + ")").join("\n");
+  $("#del-confirm").textContent = `Delete ${list.length} skill${list.length === 1 ? "" : "s"}`;
+  $("#delmodal").hidden = false;
+});
+let DEL_BUSY = false;
+$("#del-confirm").addEventListener("click", async () => {
+  if (DEL_BUSY) return;
+  const items = [...A_SEL].map(k => A_BY_KEY.get(k)).filter(Boolean).map(s => ({ profile: s.profile || A_PROFILE, rel: s.rel }));
+  if (!items.length) return;
+  DEL_BUSY = true;
+  $("#del-confirm").disabled = true;
+  try {
+    const r = await fetch("/api/skillsdelete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Watchtower": "delete" },
+      body: JSON.stringify({ items }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    $("#delmodal").hidden = true;
+    const failed = d.failed || [];
+    const note = `Deleted ${d.count} skill${d.count === 1 ? "" : "s"} — moved to ${d.trash}` +
+      (failed.length ? `\n${failed.length} failed: ` + failed.map(f => `${f.rel}: ${f.error}`).join("; ") : "");
+    A_SEL = new Set();
+    await runAudit(note);
+  } catch (err) {
+    $("#del-list").textContent = "Error: " + err.message;
+  } finally {
+    DEL_BUSY = false;
+    $("#del-confirm").disabled = false;
+  }
+});
+$("#del-cancel").addEventListener("click", () => { $("#delmodal").hidden = true; });
 
 load();
 TIMER = setInterval(load, 30000);

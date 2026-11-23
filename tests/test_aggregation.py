@@ -221,6 +221,19 @@ def main():
         ob = next(x for x in p2["profiles"] if x["name"] == "oldbot")
         check("oldbot schema_warning", "schema v99" in ob.get("schema_warning", ""), str(ob.get("schema_warning")))
 
+        # skill deletion: only inside <profile>/skills/, trash-backed, path-escape refused
+        want = os.path.join(home, "profiles", "testbot", "skills", "dev", "bar")
+        check("delete preconditions", os.path.isfile(os.path.join(want, "SKILL.md")))
+        res = server.delete_skills(home, [{"profile": "testbot", "rel": "skills/dev/bar/SKILL.md"}])
+        check("delete moved 1 skill", res["count"] == 1 and not res["failed"], str(res["failed"]))
+        check("delete removed source", not os.path.isdir(want))
+        check("delete landed in trash", os.path.isfile(os.path.join(res["trash"], "testbot", "skills", "dev", "bar", "SKILL.md")))
+        check("delete left siblings alone", os.path.isfile(os.path.join(home, "profiles", "testbot", "skills", "foo", "SKILL.md")))
+        esc = server.delete_skills(home, [{"profile": "testbot", "rel": "skills/../../etc/SKILL.md"}])
+        check("delete refuses path escape", esc["count"] == 0 and esc["failed"], str(esc))
+        bad_rel = server.delete_skills(home, [{"profile": "testbot", "rel": "SOUL.md"}])
+        check("delete refuses non-skill path", bad_rel["count"] == 0 and bad_rel["failed"], str(bad_rel))
+
     failed = [n for n, ok, _ in checks if not ok]
     print(f"\n{len(checks) - len(failed)}/{len(checks)} checks passed")
     return 1 if failed else 0

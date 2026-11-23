@@ -14,6 +14,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import threading
@@ -619,6 +620,48 @@ def skill_audit(home, profile, days):
             "total": len(skills), "unused": sum(1 for s in skills if s["unused"])}
 
 
+def delete_skills(home, items):
+    """Move skill directories to <home>/trash/watchtower-skills/<stamp>/<profile>/<rel>.
+    Never deletes anything outside <profile>/skills/, never follows symlinks, and
+    always requires a real SKILL.md — the only write action in this dashboard."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    trash_root = os.path.join(home, "trash", "watchtower-skills", stamp)
+    deleted, failed = [], []
+    for it in items[:200]:
+        if not isinstance(it, dict):
+            failed.append({"rel": str(it)[:200], "error": "bad item"})
+            continue
+        profile = str(it.get("profile") or "").strip()
+        rel = str(it.get("rel") or "").strip().strip("/")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", profile):
+            failed.append({"rel": rel[:200], "error": "bad profile"})
+            continue
+        if not rel.endswith("/SKILL.md"):
+            failed.append({"rel": rel[:200], "error": "not a skill path"})
+            continue
+        skill_rel = rel[: -len("/SKILL.md")]
+        base = profile_base(home, profile)
+        skills_root = os.path.realpath(os.path.join(base, "skills"))
+        target = os.path.realpath(os.path.join(base, skill_rel))
+        if not target.startswith(skills_root + os.sep) or target == skills_root:
+            failed.append({"rel": rel[:200], "error": "outside skills root"})
+            continue
+        if os.path.islink(os.path.join(base, skill_rel)):
+            failed.append({"rel": rel[:200], "error": "symlink refused"})
+            continue
+        if not os.path.isfile(os.path.join(target, "SKILL.md")):
+            failed.append({"rel": rel[:200], "error": "not an installed skill"})
+            continue
+        dest = os.path.join(trash_root, profile, skill_rel)
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.move(target, dest)
+            deleted.append({"profile": profile, "rel": rel, "trash": dest})
+        except Exception as e:
+            failed.append({"rel": rel[:200], "error": str(e)})
+    return {"count": len(deleted), "deleted": deleted, "failed": failed, "trash": trash_root}
+
+
 def load_tool_calls(profile, state_path, cutoff_ts, now_ts, limit=3000):
     """Per-tool-call history for one profile within the window."""
     out = {"profile": profile, "calls": [], "total": 0, "truncated": False}
@@ -875,6 +918,27 @@ def build_payload(range_days, home, date_str=None):
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # silence
         pass
+
+    def do_POST(self):
+        # The single write endpoint. Requires a custom header so a random web page
+        # cannot drive-by POST here (custom header => CORS preflight => blocked).
+        if self.headers.get("X-Watchtower") != "delete":
+            self.send_json({"error": "missing X-Watchtower header"}, 403)
+            return
+        if not self.path.startswith("/api/skillsdelete"):
+            self.send_json({"error": "not found"}, 404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        except Exception:
+            self.send_json({"error": "bad json"}, 400)
+            return
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            self.send_json({"error": "nothing to delete"}, 400)
+            return
+        self.send_json(delete_skills(HERMES_HOME, items))
 
     def do_GET(self):
         if self.path.startswith("/api/"):

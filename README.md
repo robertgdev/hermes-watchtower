@@ -31,7 +31,10 @@ become aware of the dashboard (auto-load when asked about agent usage/stats).
   forever** — selector sits right-aligned in the header, left of ✕). Uses recorded
   `skill_view`/`skill_manage` results plus `skills/.usage.json` timestamps; each
   row shows last-used time and load count, and clicking a skill opens its SKILL.md.
-  Read-only — nothing is ever deleted.
+  Rows are **multi-selectable** (with select-all); once anything is ticked a red
+  **Delete Skills (N)** button appears and asks *"Are you sure you wish to delete
+  these unused skills?"* — confirmed skills are moved to
+  `~/.hermes/trash/watchtower-skills/<timestamp>/` (restorable, never hard-deleted).
 
 **KPI row**: sessions, tool calls, success rate, failed results, tokens, estimated
 cost, cron runs — all scoped to the current time window.
@@ -136,6 +139,7 @@ All endpoints: `GET`, JSON, `Cache-Control: no-store`, bound to 127.0.0.1.
 | `/api/profilefiles` | `profile` | Whitelisted key files: SOUL.md, config.yaml, profile.yaml, memories/*.md, skills/**/SKILL.md, plugins/*/plugin.yaml. `all` merges with bot prefixes |
 | `/api/profilefile` | `profile`, `file` (rel path) | Text content of one whitelisted file (500 KB cap, binary refused) |
 | `/api/skillsaudit` | `profile`, `days` (30/90/0 = forever) | Installed skills vs. recorded use: per skill `rel`, `name`, `last_used`, `count`, `unused`. `all` merges every bot (entries carry `profile`, `rel` prefixed) |
+| `/api/skillsdelete` (POST) | JSON body `{items: [{profile, rel}]}`, header `X-Watchtower: delete` | Moves skill dirs to `~/.hermes/trash/watchtower-skills/<stamp>/`; returns `{count, deleted[], failed[], trash}` |
 
 Window semantics: no `date` → rolling window ending now; `date=D` → window *ends*
 on D (24h = D's calendar day, 7d/30d = N days ending on D, all = everything up to D).
@@ -194,6 +198,13 @@ pairs/durations, the file-browser whitelist (`.env` and traversal rejected), the
   caches, lock files, and transient runtime JSON are never listed or served;
   path traversal is rejected.
 - File content is rendered as text (`textContent`), never injected as HTML.
+- **One write action exists: skill deletion** (actions modal → Delete Skills).
+  It is confirmed in a dialog, only accepts paths ending in `/SKILL.md` that
+  resolve inside `<profile>/skills/`, refuses symlinks, and **moves** the
+  directory to `~/.hermes/trash/watchtower-skills/<timestamp>/` — nothing is
+  hard-deleted. The endpoint is `POST /api/skillsdelete` and requires an
+  `X-Watchtower: delete` header, so a random web page cannot drive-by POST
+  (a custom header forces a CORS preflight this server never answers).
 
 ---
 

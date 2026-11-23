@@ -38,12 +38,19 @@ A tool result is failed iff its content matches any of: `"success": false` OR a 
 - `/api/toolmessage?profile=&sid=&call=` — full raw content of one tool result, fetched lazily per row (never embed full payloads in the list endpoint).
 - `/api/profilefiles?profile=` and `/api/profilefile?profile=&file=` — whitelisted key files only: SOUL.md, config.yaml, profile.yaml, memories/*.md, skills/**/SKILL.md, plugins/*/plugin.yaml. Never list or serve .env, auth.json, DBs, caches, lock files, or transient runtime JSON.
 - `/api/skillsaudit?profile=&days=30|90|0` — installed skills vs. recorded use (see Skill audit below).
+- `POST /api/skillsdelete` (header `X-Watchtower: delete`, body `{items:[{profile,rel}]}`) — the ONLY write endpoint; moves skill dirs to `<home>/trash/watchtower-skills/<stamp>/`.
+
+## Read-only claim: nuance
+- DBs, file browsing and everything else stay read-only — but the dashboard is no longer *entirely* read-only: skill deletion is an explicit, confirmed, trash-backed action. When documenting, say "one write action, trash-backed", not "read-only".
 
 ## Skill audit (🔧 actions modal)
 - The wrench (🔧) beside ⓘ on each card opens `#amodal` (`modal-panel ppanel`, same two-pane layout as `#pmodal`); header holds title, `#audit-days` select (30/90/forever), `#audit-run` "Audit Skills" button, ✕.
 - Method (ported from the Nov 22 skills-prune session): enumerate `skills/**/SKILL.md` (frontmatter `name:`, fallback dir name), then join against per-profile usage = recorded `skill_view`/`skill_manage` tool RESULTS whose JSON has `"success": true` and a `name` (per-skill count + max timestamp) plus `skills/.usage.json` `last_used_at`/`last_viewed_at` (those survive message compaction). `unused` = never used, or last use older than the cutoff; `days=0` = never used only.
 - Never treat `.usage.json` alone as truth — it keeps entries for deleted skills (the prune session hit exactly that). Results use the message records as ground truth and `.usage.json` only to extend the last-used timestamp.
 - The API returns every skill with an `unused` flag, sorted never-used first; the UI shows only the unused subset plus a "N of M skills unused in the last Nd" header. Row click previews the SKILL.md via `/api/profilefile`; for `profile=all` pass `file=<bot>/skills/...` (`read_profile_file` splits the bot prefix).
+- Multi-select: each row is `.arow` = checkbox (`data-k`) + `.atext` (name/meta, click = preview). Selection lives in `A_SEL` (Set of `key = profile:rel`) and `A_BY_KEY`; `renderAudit()` re-renders from those two, so select-all and single toggles share one code path.
+- **The one write action**: `#delete-skills` is hidden until `A_SEL.size > 0`, then reads "Delete Skills (N)" and opens `#delmodal` — a real confirmation step ("Are you sure you wish to delete these unused skills?") listing every skill path, with Cancel / Delete N skills. `POST /api/skillsdelete` requires header `X-Watchtower: delete` (custom header ⇒ CORS preflight ⇒ random pages can't drive-by POST) and `delete_skills()` enforces: rel ends `/SKILL.md`, realpath inside `<profile>/skills/`, not a symlink, real SKILL.md present — then **moves** to `~/.hermes/trash/watchtower-skills/<stamp>/<profile>/<rel>`. Never rm -rf; the trash path is shown after success and the audit re-runs automatically. Say "moved to trash", never "permanently deleted".
+- The actions modal is the designated home for future per-bot maintenance actions: each action is a header control group (select + `.actbtn`) left of ✕ with its result in the two panes — extend this modal rather than adding a new one per action.
 
 ## Frontend conventions (index.html, vanilla JS + inline SVG, zero deps)
 - Prefs persisted in localStorage: `ho-theme` (dark/light), `ho-all` (All-card toggle). Apply stored prefs in a head inline script before first paint to avoid theme flash.
@@ -75,14 +82,16 @@ A tool result is failed iff its content matches any of: `"success": false` OR a 
 - Renaming touches every surface: dir; index.html (title, brand crumb, footer); server.py (docstring, startup print); start.sh; tests docstring; README (title, screenshot alt, commands, layout tree); and the installed skill dir + frontmatter. `mv` the skill directory, edit `name`/`description`/heading/paths, then grep for leftovers across all extensions and restart before declaring done.
 
 ## Pitfalls
-- Patch precision: the tool's `new_string` must be the exact final code — read the returned diff every time. A dropped trailing newline silently merged two statements into a SyntaxError, and an invented wrapper (`$(x) && (…)`) changed behaviour; in the single-script index.html and in server.py's spliced f-strings neither shows up until tests or the browser run.
+- Patch precision: `new_string` must be a complete, line-terminated block, and the returned diff must be read on every edit. A dropped trailing newline merges two statements (`def f():    """…"""`, or a `## heading` glued to its first bullet) and only lint/execution catches it; an invented wrapper (`$(x) && (…)`) silently changes behaviour. Run the linter or tests right after a patch batch in the same file — do not stack several patches and only test at the end.
 - Query params: `encodeURIComponent` turns `/` into `%2F`; a naive `split("=")` query parser never URL-decodes, so path/whitelist lookups silently fail for any value containing slashes. Decode server-side with `urllib.parse.unquote`.
 - Never set a container's innerHTML to a "Loading…" placeholder if child elements must survive — it destroys them (wiping #modal-body killed #callbody). Put loading/error rows inside the tbody.
 - Give every element the JS references an actual `id` — a div with only `class="modal-body"` makes `$("#modal-body")` null and the open function dies silently right after setting the title.
 - Synthetic cards (the "All" aggregate) must carry a separate API key (`profile_key: "all"`) from their display name, or drill-down fetches 404 on the capitalized name.
 - Sparkline max must come from the actual data array, not a lookup keyed by the profile name (an aggregate card's name has no activity rows → overflow).
 - Flex spacing: to shrink the gap between a wrapped flex line and a full-width child, use a negative margin on the child (gap + margin combine) — measure the actual px with getBoundingClientRect, don't eyeball.
+- Deleting a skill in the browser harness: `checkbox.click()` **toggles** — read `.checked` first. A "delete did nothing" scare was a second click un-selecting the row, not a bug in the delete path.
 - In test fixtures that build state DBs, commit() before close() — sqlite3 rolls back uncommitted inserts on close(), so a session silently vanishes and aggregation totals come back short with no error.
+- Adding `tool_result` rows to the fixture shifts the asserted `tool_results` / failure totals. To exercise recorded skill usage, rewrite an EXISTING call's result content to `{"success": true, "name": "<skill>"}`, or drive last-used dates through `skills/.usage.json` — only insert new rows when the test is meant to change those totals.
 
 ## Verification with the browser harness
 - Each `js()` call is a fresh evaluation: Python variables don't cross into JS strings, and top-level `const` collides on re-declaration — wrap in an IIFE or reassign without `const`.
@@ -90,6 +99,7 @@ A tool result is failed iff its content matches any of: `"success": false` OR a 
 - `bool(js("document.getElementById(...)"))` lies (DOM-element serialization) — probe `.textContent`/`outerHTML` instead.
 - `Array.from(nodeList).includes('All')` compares DOM NODES to strings and is always false — map to `.textContent` first.
 - Do not call the harness `js()` helper from inside page JS (it's not defined there); use plain DOM `.click()`/`dispatchEvent` in the page.
+- README screenshot: verify the DOM first (card count, brand text), then `Emulation.setDeviceMetricsOverride` (width 1600, deviceScaleFactor 1) + `Page.captureScreenshot(captureBeyondViewport=True)` → base64-decode into `docs/screenshot.png`. A fresh harness context follows the OS theme, so `localStorage.setItem('ho-theme','dark')` and reload in the SAME call, and assert `data-theme` before capturing. Verify the file by reading the PNG header (`struct.unpack('>II', data[16:24])`) rather than trusting the call.
 
 ## If the dashboard files vanish
 See references/file-recovery-from-session-history.md — the exact files can be reconstructed from Hermes's own session history when no backup exists.
