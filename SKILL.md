@@ -93,6 +93,7 @@ A tool result is failed iff its content matches any of: `"success": false` OR a 
 - Sparkline max must come from the actual data array, not a lookup keyed by the profile name (an aggregate card's name has no activity rows → overflow).
 - Flex spacing: to shrink the gap between a wrapped flex line and a full-width child, use a negative margin on the child (gap + margin combine) — measure the actual px with getBoundingClientRect, don't eyeball.
 - Deleting a skill in the browser harness: `checkbox.click()` **toggles** — read `.checked` first. A "delete did nothing" scare was a second click un-selecting the row, not a bug in the delete path.
+- Counting servers with `pgrep -fc 'python3 server.py'` also matches the pgrep's own shell and over-reports; use `ps -eo pid,args | grep '[s]erver\.py'`. Same trap with `kill $(pgrep -f '... --port N')` — it SIGTERMs your own command, so kill by explicit PID.
 - In test fixtures that build state DBs, commit() before close() — sqlite3 rolls back uncommitted inserts on close(), so a session silently vanishes and aggregation totals come back short with no error.
 - Adding `tool_result` rows to the fixture shifts the asserted `tool_results` / failure totals. To exercise recorded skill usage, rewrite an EXISTING call's result content to `{"success": true, "name": "<skill>"}`, or drive last-used dates through `skills/.usage.json` — only insert new rows when the test is meant to change those totals.
 
