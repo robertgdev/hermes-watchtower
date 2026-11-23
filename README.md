@@ -65,10 +65,47 @@ persisted in `localStorage` (`ho-theme`). No theme flash on reload.
 
 ---
 
-## Quick start
+## Install
+
+**As a Hermes skill (recommended)** — the repo root *is* a skill (`SKILL.md`
+teaches the agent how to run and maintain it) plus the app itself:
 
 ```bash
-./start.sh                # default port 8790
+git clone https://github.com/<you>/hermes-watchtower.git
+cd hermes-watchtower
+./install.sh
+```
+
+`install.sh` copies the app to `~/.hermes/skills/hermes-watchtower/`, writes a
+desktop menu entry, and prints the next steps. Options (`./install.sh --help`):
+
+| Flag | Effect |
+|---|---|
+| `--skill-dir DIR` | copy target (default `~/.hermes/skills/hermes-watchtower`) |
+| `--port N` | port baked into the launcher (default 8790) |
+| `--no-skill` | don't copy — run the clone in place |
+| `--no-desktop` | skip the menu entry |
+| `--systemd` | also install + enable a systemd **user** service (always-on URL) |
+| `--force` | overwrite an existing copy (upgrade) |
+
+Then **restart your Hermes session** (the skill index is built at session
+start). Any of these opens it:
+
+| How | What happens |
+|---|---|
+| Chat: *"open the watchtower"* | the agent loads the skill and starts the server |
+| App menu → **Hermes Watchtower** | `open.sh` starts the server if needed, opens the browser |
+| `~/.hermes/skills/hermes-watchtower/open.sh` | same as the menu entry |
+| `alias watchtower=~/.hermes/skills/hermes-watchtower/open.sh` | your own shortcut |
+
+`open.sh [port]` is idempotent: it probes `/api/data`, starts the server only
+if nothing answers (detached, logging to `server.log`), waits for it, prints the
+URL and opens the browser (`$BROWSER`, `xdg-open`, `open`, or `wslview`).
+
+**Just run it** (no skill install):
+
+```bash
+./start.sh                # foreground, default port 8790
 ./start.sh 9000           # custom port
 python3 server.py --port 8790 --home ~/.hermes   # explicit options
 ```
@@ -225,15 +262,18 @@ pairs/durations, the file-browser whitelist (`.env` and traversal rejected), the
 
 ```
 hermes-watchtower/
-├── server.py        # stdlib HTTP server + aggregation (no third-party deps)
-├── index.html       # the whole UI (CSS + JS inline)
-├── start.sh         # launcher
-├── README.md        # this file
-├── SKILL.md         # Hermes skill wrapper — makes this repo installable as a skill
-├── LICENSE          # MIT
-├── tests/           # regression tests (fixture state.db, stdlib only)
+├── server.py            # stdlib HTTP server + aggregation (no third-party deps)
+├── index.html           # the whole UI (CSS + JS inline)
+├── start.sh             # foreground launcher
+├── open.sh              # start-if-needed launcher: prints URL, opens the browser
+├── install.sh           # Hermes-skill install + desktop entry (+ optional systemd)
+├── README.md            # this file
+├── SKILL.md             # Hermes skill wrapper — makes this repo installable as a skill
+├── LICENSE              # MIT
+├── config.example.json  # copy to config.json to override cost rates
+├── tests/               # regression tests (fixture state.db, stdlib only)
 ├── docs/screenshot.png
-└── references/      # optional skill reference files
+└── references/          # optional skill reference files
 ```
 
 The dashboard is a Hermes *plugin-free* app: it reads Hermes data but runs as a
