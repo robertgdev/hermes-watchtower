@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .venv/
 config.json
+.idea/
+*.iml
+.DS_Store

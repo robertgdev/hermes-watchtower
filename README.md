@@ -164,7 +164,8 @@ the dashboard **recomputes** that model's cost from the recorded token counts in
 (input, output+reasoning, cache read/write at your rates) — useful when the provider's
 real price differs from what Hermes assumed. The footer shows which mode is active.
 `cost_multiplier` then scales every displayed cost, for calibrating against your
-provider's usage page.
+provider's usage page. A `config.example.json` is included — copy it to `config.json`
+(gitignored) and adjust rates for the models you actually use.
 
 Note: this dashboard only sees **Hermes** usage. Provider balances (e.g. Kilo
 credits) are often shared with other tools (IDE extension, CLI, cloud agents), so

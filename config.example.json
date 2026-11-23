@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy this file to config.json (gitignored) and adjust. Rates are USD per 1M tokens; models listed here are recomputed from the recorded token counts instead of trusting Hermes's stored estimate. cost_multiplier scales every displayed cost — use it to calibrate against your provider's usage page.",
+  "rates": {
+    "deepseek/deepseek-v4-flash": {
+      "input": 0.09,
+      "output": 0.18,
+      "cache_read": 0.018,
+      "cache_write": 0
+    }
+  },
+  "cost_multiplier": 1.0
+}
