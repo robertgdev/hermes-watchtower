@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for the Hermes Operate dashboard aggregation.
+"""Regression tests for the Hermes Watchtower aggregation.
 
 Run:  python3 tests/test_aggregation.py
 

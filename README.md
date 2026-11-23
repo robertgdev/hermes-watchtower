@@ -1,4 +1,4 @@
-# Hermes Operate
+# Hermes Watchtower
 
 A live, per-profile operations dashboard for Hermes agents — sessions, tool calls,
 success/failure rates, token usage, and estimated cost, grouped by bot/profile.
@@ -65,7 +65,7 @@ python3 server.py --port 8790 --home ~/.hermes   # explicit options
 
 Then open http://127.0.0.1:8790
 
-![Hermes Operate dashboard](docs/screenshot.png)
+![Hermes Watchtower](docs/screenshot.png)
 
 - Auto-refreshes every 30 s
 - Card data is loaded with the page (`/api/data`); the tool-call modal and full
@@ -75,7 +75,7 @@ Then open http://127.0.0.1:8790
 
 ```bash
 kill $(pgrep -f "^python3 server.py")   # anchored pattern — see Pitfalls
-cd ~/hermes-dashboard && (nohup python3 server.py --port 8790 > server.log 2>&1 &)
+cd ~/hermes-watchtower && (nohup python3 server.py --port 8790 > server.log 2>&1 &)
 ```
 
 Frontend edits (`index.html`) need no restart — it is read fresh on every request.
@@ -204,7 +204,7 @@ pairs/durations, the file-browser whitelist (`.env` and traversal rejected), the
 ## Repository layout
 
 ```
-hermes-operate/
+hermes-watchtower/
 ├── server.py        # stdlib HTTP server + aggregation (no third-party deps)
 ├── index.html       # the whole UI (CSS + JS inline)
 ├── start.sh         # launcher

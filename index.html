@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hermes Operate</title>
+<title>Hermes Watchtower</title>
 <script>
   (function(){
     try{
@@ -209,7 +209,7 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="brand"><div class="logo">◆</div> Hermes <span class="crumb">Operate / All profiles</span></div>
+    <div class="brand"><div class="logo">◆</div> Hermes <span class="crumb">Watchtower / All profiles</span></div>
     <div class="spacer"></div>
     <input class="search" id="search" placeholder="Search bots…" autocomplete="off">
     <input type="date" id="date" title="Anchor date — ranges end on this day (clears to live view)">
@@ -502,7 +502,7 @@ function render(){
   const costNote = DATA.cost && DATA.cost.mode === "custom"
     ? ` · cost: tokens × custom rates${DATA.cost.multiplier !== 1 ? " ×" + DATA.cost.multiplier : ""}`
     : " · cost: stored estimates";
-  $("#foot").textContent = `Hermes Operate · data from ~/.hermes state DBs (read-only) · generated ${DATA.generated_at} · window ${DATA.window_label}${DATA.date ? " (anchored to " + DATA.date + ")" : " (live)"}${costNote} · auto-refreshes every 30s`;
+  $("#foot").textContent = `Hermes Watchtower · data from ~/.hermes state DBs (read-only) · generated ${DATA.generated_at} · window ${DATA.window_label}${DATA.date ? " (anchored to " + DATA.date + ")" : " (live)"}${costNote} · auto-refreshes every 30s`;
 }
 
 async function load(){

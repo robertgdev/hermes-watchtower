@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermes Operate — live per-profile dashboard server.
+"""Hermes Watchtower — read-only observability server for Hermes agent profiles.
 
 Reads ~/.hermes/state.db + ~/.hermes/profiles/*/state.db (read-only) and serves
 a Corda-style ops dashboard at http://127.0.0.1:8790
@@ -895,7 +895,7 @@ def main():
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         bound = srv.server_address[1]
         print(f"port {args.port} busy ({e.strerror or e}); serving on {bound}", flush=True)
-    print(f"Hermes Operate dashboard: http://127.0.0.1:{bound}  (home={HERMES_HOME})", flush=True)
+    print(f"Hermes Watchtower: http://127.0.0.1:{bound}  (home={HERMES_HOME})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
