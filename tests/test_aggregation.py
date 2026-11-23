@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 spec = importlib.util.spec_from_file_location("server", os.path.join(ROOT, "server.py"))
@@ -99,7 +100,7 @@ def build_home(tmp):
     add_assistant_call(t, "t2", "call_4", NOW - 2 * DAY + 10)
     add_tool_result(t, "t2", "call_4", NOW - 2 * DAY + 11, "some text EXIT_CODE=1")
     add_assistant_call(t, "t2", "call_5", NOW - 2 * DAY + 20, tool="skill_view", args='{"name": "foo"}')
-    add_tool_result(t, "t2", "call_5", NOW - 2 * DAY + 21, '{"ok": true}', tool="skill_view")
+    add_tool_result(t, "t2", "call_5", NOW - 2 * DAY + 21, '{"success": true, "name": "foo"}', tool="skill_view")
     t.cursor().executemany(
         "INSERT INTO session_model_usage VALUES (?,?,?,?)",
         [("t1", "deepseek/deepseek-v4-flash", 5, 1.0), ("t2", "deepseek/deepseek-v4-flash", 1, 0.5)])
@@ -110,6 +111,15 @@ def build_home(tmp):
         f.write("# Testbot Soul\npersona")
     with open(os.path.join(home, "profiles", "testbot", "skills", "foo", "SKILL.md"), "w") as f:
         f.write("---\nname: foo\n---\n# Foo skill\n")
+    # extra skills for the audit: one never used, one used 60 days ago (via .usage.json)
+    for sub, name in (("dev/bar", "bar"), ("research/old", "old")):
+        d = os.path.join(home, "profiles", "testbot", "skills", sub)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "SKILL.md"), "w") as f:
+            f.write(f"---\nname: {name}\n---\n# {name} skill\n")
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
+    with open(os.path.join(home, "profiles", "testbot", "skills", ".usage.json"), "w") as f:
+        json.dump({"old": {"use_count": 1, "view_count": 2, "last_used_at": old_iso}}, f)
     with open(os.path.join(home, "profiles", "testbot", ".env"), "w") as f:
         f.write("SECRET=shhh\n")
     return home
@@ -186,6 +196,20 @@ def main():
         check("recomputed totals", abs(p3["totals"]["est_cost"] - 0.0005562) < 1e-6, str(p3["totals"]["est_cost"]))
         check("custom mode reported", p3["cost"]["mode"] == "custom")
         server._RATES = {}
+
+        # skill audit: installed skills vs recorded usage (.usage.json + skill_view results)
+        a30 = server.skill_audit(home, "testbot", 30)
+        unused30 = {s["name"] for s in a30["skills"] if s["unused"]}
+        check("audit total 3", a30["total"] == 3, str(a30["total"]))
+        check("audit 30d unused = bar+old", unused30 == {"bar", "old"}, str(unused30))
+        check("audit 30d never-used first", a30["skills"][0]["name"] == "bar", a30["skills"][0]["name"])
+        check("audit 30d foo has last_used", next(s for s in a30["skills"] if s["name"] == "foo")["last_used"] is not None)
+        a90 = server.skill_audit(home, "testbot", 90)
+        check("audit 90d unused = bar", {s["name"] for s in a90["skills"] if s["unused"]} == {"bar"})
+        a0 = server.skill_audit(home, "testbot", 0)
+        check("audit forever unused = bar", {s["name"] for s in a0["skills"] if s["unused"]} == {"bar"})
+        aall = server.skill_audit(home, "all", 30)
+        check("audit all merges profiles", aall["total"] >= 3 and "testbot" in {s.get("profile") for s in aall["skills"]})
 
         bad = os.path.join(home, "profiles", "oldbot")
         os.makedirs(bad)

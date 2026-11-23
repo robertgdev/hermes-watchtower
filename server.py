@@ -511,6 +511,114 @@ def read_profile_file(home, profile, rel):
         return {"error": str(e)}
 
 
+def _skill_md_name(path):
+    """Frontmatter `name:` of a SKILL.md, lowercased; '' when absent/unreadable."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            head = f.read(4096)
+    except Exception:
+        return ""
+    m = re.search(r"^name:\s*(.+?)\s*$", head, re.M)
+    return m.group(1).strip().strip("\"'").lower() if m else ""
+
+
+def _skill_usage(home, profile):
+    """{skill_name: {"count": n, "last": ts|None}} — ground truth from recorded
+    skill_view/skill_manage results, plus last-used stamps from skills/.usage.json
+    (those survive message compaction)."""
+    usage = {}
+
+    def bump(name, ts=None):
+        if not name:
+            return
+        u = usage.setdefault(str(name).strip().lower(), {"count": 0, "last": None})
+        u["count"] += 1
+        if ts and (u["last"] is None or ts > u["last"]):
+            u["last"] = ts
+
+    state = os.path.join(profile_base(home, profile), "state.db")
+    try:
+        conn = ro_connect(state)
+        for r in conn.execute(
+            "SELECT content, timestamp FROM messages WHERE tool_name IN ('skill_view','skill_manage')"
+        ):
+            c = r["content"] or ""
+            if '"success": true' not in c:
+                continue
+            try:
+                d = json.loads(c)
+            except Exception:
+                continue
+            if not d.get("success"):
+                continue
+            bump(d.get("name") or d.get("skill"), r["timestamp"])
+        conn.close()
+    except Exception:
+        pass
+
+    try:
+        with open(os.path.join(profile_base(home, profile), "skills", ".usage.json")) as f:
+            recs = json.load(f) or {}
+        for name, rec in recs.items():
+            if not isinstance(rec, dict):
+                continue
+            for key in ("last_used_at", "last_viewed_at"):
+                v = rec.get(key)
+                if not v:
+                    continue
+                try:
+                    ts = datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    continue
+                u = usage.setdefault(name.strip().lower(), {"count": 0, "last": None})
+                if u["last"] is None or ts > u["last"]:
+                    u["last"] = ts
+    except Exception:
+        pass
+    return usage
+
+
+def _audit_sort(s):
+    return (not s["unused"], s["last_used"] is not None, s["last_used"] or 0, s["name"].lower())
+
+
+def skill_audit(home, profile, days):
+    """Installed skills vs. actual use for one profile (or all).
+    days=30/90 → unused = last use older than the cutoff or never used;
+    days=0 → unused = never used at all."""
+    if profile == "all":
+        merged = []
+        for name, _, _ in find_profile_dbs(home):
+            sub = skill_audit(home, name, days)
+            for s in sub.get("skills", []):
+                s = dict(s)
+                s["profile"] = name
+                s["rel"] = f"{name}/{s['rel']}"
+                merged.append(s)
+        merged.sort(key=_audit_sort)
+        return {"profile": "all", "days": days, "skills": merged,
+                "total": len(merged), "unused": sum(1 for s in merged if s["unused"])}
+    base = profile_base(home, profile)
+    if not os.path.isdir(base):
+        return {"error": "profile not found"}
+    usage = _skill_usage(home, profile)
+    now = time.time()
+    cutoff = now - days * 86400 if days else None
+    skills = []
+    for p in sorted(glob.glob(os.path.join(base, SKILL_GLOB), recursive=True)):
+        rel = os.path.relpath(p, base).replace(os.sep, "/")
+        dirname = os.path.basename(os.path.dirname(p))
+        name = _skill_md_name(p) or dirname.lower()
+        u = usage.get(name) or usage.get(dirname.lower()) or {"count": 0, "last": None}
+        last = u["last"]
+        unused = (last is None) if not days else (last is None or last < cutoff)
+        skills.append({"rel": rel, "name": dirname, "last_used": last,
+                       "count": u["count"], "unused": unused})
+    skills.sort(key=_audit_sort)
+    return {"profile": profile, "days": days, "skills": skills,
+            "total": len(skills), "unused": sum(1 for s in skills if s["unused"])}
+
+
 def load_tool_calls(profile, state_path, cutoff_ts, now_ts, limit=3000):
     """Per-tool-call history for one profile within the window."""
     out = {"profile": profile, "calls": [], "total": 0, "truncated": False}
@@ -801,6 +909,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"error": "bad file"}, 400)
                     return
                 self.send_json(read_profile_file(HERMES_HOME, profile, rel))
+            elif self.path.startswith("/api/skillsaudit"):
+                profile = params.get("profile", "")
+                if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", profile):
+                    self.send_json({"error": "bad profile"}, 400)
+                    return
+                try:
+                    days = int(params.get("days", "30"))
+                except Exception:
+                    days = 30
+                if days not in (0, 30, 90):
+                    days = 30
+                self.send_json(skill_audit(HERMES_HOME, profile, days))
             elif self.path.startswith("/api/toolmessage"):
                 profile = params.get("profile", "")
                 if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", profile):

@@ -181,6 +181,12 @@
   .modal-close{margin-left:6px;background:var(--card2);border:1px solid var(--border);color:var(--fg);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;line-height:1}
   #imodal-close{margin-left:auto}
   #pmodal-close{margin-left:auto}
+  #amodal-close{margin-left:auto}
+  #audit-days{margin-left:auto}
+  .actbtn{background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:12px;padding:5px 10px;cursor:pointer;font-family:var(--mono)}
+  .actbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .pfiles button .ameta{display:block;font-size:10px;color:var(--dim);margin-top:2px;white-space:normal;line-height:1.35}
+  .pfiles button.on .ameta{color:#dbe4f0}
   .modal-close:hover{border-color:var(--accent)}
   .filter{margin-left:6px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:12px;padding:5px 8px;font-family:var(--mono);outline:none;max-width:280px}
   #callsession{margin-left:auto}
@@ -326,6 +332,25 @@
   </div>
 </div>
 
+<div class="modal" id="amodal" hidden>
+  <div class="modal-back" id="amodal-back"></div>
+  <div class="modal-panel ppanel">
+    <div class="modal-head"><span id="amodal-title">Actions</span>
+      <select id="audit-days" class="filter" title="Unused window">
+        <option value="30">30 days</option>
+        <option value="90">90 days</option>
+        <option value="0">forever</option>
+      </select>
+      <button id="audit-run" class="actbtn">Audit Skills</button>
+      <button class="modal-close" id="amodal-close" title="Close">✕</button>
+    </div>
+    <div class="pmodal-body">
+      <div class="pfiles" id="aresults"><div class="empty">Press “Audit Skills” to scan.</div></div>
+      <div class="pcontent" id="apreview"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -405,6 +430,7 @@ function cards(){
     return `<div class="card">
       <div class="top"><span class="dot ${p.status}"></span><span class="name">${esc(p.name)}</span>
         <button class="info-btn c-info" data-profile="${p.profile_key || p.name}" title="Skills & key files">ⓘ</button>
+        <button class="info-btn c-act" data-profile="${p.profile_key || p.name}" title="Actions — audit unused skills">🔧</button>
         <span class="st ${p.status==="down"?"bad":p.status==="idle"?"warn":""}">${esc(p.status_detail)}</span></div>
       <div class="mini">
         <div class="m"><div class="l">Sessions</div><div class="v">${fmtNum(p.sessions)}</div></div>
@@ -678,9 +704,10 @@ document.addEventListener("click", e => {
   if (e.target.closest("#imodal-close") || e.target.closest("#imodal-back")) $("#imodal").hidden = true;
   if (e.target.closest("#attention-info")) $("#imodal").hidden = false;
   if (e.target.closest("#pmodal-close") || e.target.closest("#pmodal-back")) $("#pmodal").hidden = true;
+  if (e.target.closest("#amodal-close") || e.target.closest("#amodal-back")) $("#amodal").hidden = true;
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { $("#modal").hidden = true; $("#dmodal").hidden = true; $("#imodal").hidden = true; $("#pmodal").hidden = true; }
+  if (e.key === "Escape") { $("#modal").hidden = true; $("#dmodal").hidden = true; $("#imodal").hidden = true; $("#pmodal").hidden = true; $("#amodal").hidden = true; }
 });
 
 /* --- profile skills & key files modal --- */
@@ -715,6 +742,59 @@ const openProfileFile = async f => {
 $("#pfiles").addEventListener("click", e => {
   const b = e.target.closest("button[data-i]");
   if (b) openProfileFile(PFILE_LIST[+b.dataset.i]);
+});
+
+/* --- actions modal (wrench): per-bot maintenance actions --- */
+let A_PROFILE = "", AUDIT_LIST = [];
+const A_INTRO = `<pre>Skills installed for this bot, checked against the skill loads and edits recorded in its session history. “Audit Skills” lists the ones never used, or not used within the selected window (30 days / 90 days / forever). Click a skill to read its SKILL.md.
+
+Read-only: nothing here deletes or edits anything.</pre>`;
+const openActions = profile => {
+  A_PROFILE = profile; AUDIT_LIST = [];
+  $("#amodal-title").textContent = `${profile === "all" ? "All" : profile} · actions`;
+  $("#aresults").innerHTML = `<div class="empty">Press “Audit Skills” to scan.</div>`;
+  $("#apreview").innerHTML = A_INTRO;
+  $("#amodal").hidden = false;
+};
+$("#cards").addEventListener("click", e => {
+  const b = e.target.closest(".c-act");
+  if (b) openActions(b.dataset.profile);
+});
+$("#audit-run").addEventListener("click", async () => {
+  const days = $("#audit-days").value;
+  $("#aresults").innerHTML = `<div class="empty">Auditing…</div>`;
+  try {
+    const r = await fetch(`/api/skillsaudit?profile=${encodeURIComponent(A_PROFILE)}&days=${days}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    AUDIT_LIST = d.skills || [];
+    const unused = AUDIT_LIST.filter(s => s.unused);
+    const scope = days === "0" ? "never used" : `unused in the last ${days} days`;
+    const head = `<div class="empty" style="color:var(--fg)"><b>${unused.length}</b> of ${d.total} skills ${scope}</div>`;
+    if (!unused.length) {
+      $("#aresults").innerHTML = head + `<div class="empty">Every installed skill was used within the window.</div>`;
+      $("#apreview").innerHTML = `<pre>Nothing to clean up.</pre>`;
+      return;
+    }
+    $("#aresults").innerHTML = head + unused.map((s, i) => `<button data-i="${i}"><span>${esc(s.profile ? s.profile + " · " + s.name : s.name)}</span><span class="ameta">${s.last_used ? "last used " + fmtDT(s.last_used) : "never used"}${s.count ? ` · ${s.count} load${s.count === 1 ? "" : "s"}` : ""}</span></button>`).join("");
+  } catch (err) {
+    $("#aresults").innerHTML = `<div class="empty">Error: ${esc(err.message)}</div>`;
+  }
+});
+$("#aresults").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-i]");
+  if (!b) return;
+  const s = AUDIT_LIST.filter(x => x.unused)[+b.dataset.i];
+  if (!s) return;
+  document.querySelectorAll("#aresults button").forEach(x => x.classList.toggle("on", x === b));
+  $("#apreview").innerHTML = `<pre>Loading…</pre>`;
+  try {
+    const r = await fetch(`/api/profilefile?profile=${encodeURIComponent(A_PROFILE)}&file=${encodeURIComponent(s.rel)}`);
+    const d = await r.json();
+    $("#apreview").innerHTML = d.error ? `<pre>${esc(d.error)}</pre>` : `<pre>${esc(d.content)}</pre>`;
+  } catch (err) {
+    $("#apreview").innerHTML = `<pre>Error: ${esc(err.message)}</pre>`;
+  }
 });
 
 load();
