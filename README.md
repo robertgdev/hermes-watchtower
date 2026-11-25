@@ -26,15 +26,17 @@ become aware of the dashboard (auto-load when asked about agent usage/stats).
 - **ⓘ button** on each card → skills & key files browser (left pane = scrollable
   file list, main area = file contents)
 - **🔧 button** on each card → **actions modal** (maintenance actions for that bot).
-  Its first action, **Audit Skills**, lists skills installed for the bot that were
-  never loaded, or not loaded within the selected window (**30 days / 90 days /
-  forever** — selector sits right-aligned in the header, left of ✕). Uses recorded
+  Its first action, **Audit Skills**, lists **every** skill installed for the bot,
+  dims the used ones ("used 3d ago") and flags the unused ones (never loaded, or
+  not loaded within the selected window — **30 days / 90 days / forever**;
+  selector sits right-aligned in the header, left of ✕). Uses recorded
   `skill_view`/`skill_manage` results plus `skills/.usage.json` timestamps; each
   row shows last-used time and load count, and clicking a skill opens its SKILL.md.
-  Rows are **multi-selectable** (with select-all); once anything is ticked a red
-  **Delete Skills (N)** button appears and asks *"Are you sure you wish to delete
-  these unused skills?"* — confirmed skills are moved to
+  Unused rows are **multi-selectable** (with select-all); once anything is ticked
+  a red **Delete Skills (N)** button appears and asks *"Are you sure you wish to
+  delete these unused skills?"* — confirmed skills are moved to
   `~/.hermes/trash/watchtower-skills/<timestamp>/` (restorable, never hard-deleted).
+  Used skills are listed but not selectable.
 
 **KPI row**: sessions, tool calls, success rate, failed results, tokens, estimated
 cost, cron runs — all scoped to the current time window.

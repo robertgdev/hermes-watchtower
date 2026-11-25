@@ -187,6 +187,8 @@
   .actbtn:hover{border-color:var(--accent);color:var(--accent)}
   .pfiles button .ameta{display:block;font-size:10px;color:var(--dim);margin-top:2px;white-space:normal;line-height:1.35}
   .pfiles button.on .ameta{color:#dbe4f0}
+  .arow.used .atext{opacity:.55}
+  .arow.used input{opacity:.35}
   .ahead{display:flex;align-items:center;gap:6px;padding:2px 8px 8px;border-bottom:1px solid var(--border);margin-bottom:6px;font-size:11px;color:var(--muted)}
   .ahead label{display:flex;align-items:center;gap:6px;cursor:pointer}
   .arow{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:6px}
@@ -777,7 +779,7 @@ $("#pfiles").addEventListener("click", e => {
 });
 
 /* --- actions modal (wrench): per-bot maintenance actions --- */
-let A_PROFILE = "", AUDIT_LIST = [], AUDIT_UNUSED = [], A_HEAD = "", A_SEL = new Set(), A_BY_KEY = new Map();
+let A_PROFILE = "", AUDIT_LIST = [], A_HEAD = "", A_SEL = new Set(), A_BY_KEY = new Map();
 const A_INTRO = `<pre>Skills installed for this bot, checked against the skill loads and edits recorded in its session history. “Audit Skills” lists the ones never used, or not used within the selected window (30 days / 90 days / forever). Click a skill name to read its SKILL.md.
 
 Tick skills to select them; “Delete Skills” appears once something is selected and always asks for confirmation first. Deleted skills are moved to ~/.hermes/trash/watchtower-skills/&lt;timestamp&gt;/.</pre>`;
@@ -788,17 +790,20 @@ const updateDeleteBtn = () => {
   b.textContent = `Delete Skills (${n})`;
 };
 const renderAudit = () => {
-  if (!AUDIT_UNUSED.length) return;
-  const allOn = A_SEL.size === AUDIT_UNUSED.length;
-  const head = `<div class="ahead"><label><input type="checkbox" id="a-all"${allOn ? " checked" : ""}> select all</label><span style="margin-left:auto">${A_SEL.size} selected</span></div>`;
-  $("#aresults").innerHTML = A_HEAD + head + AUDIT_UNUSED.map((s, i) => {
-    const k = aKey(s), on = A_SEL.has(k);
-    return `<div class="arow${on ? " sel" : ""}"><input type="checkbox" data-k="${i}"${on ? " checked" : ""} title="Select ${esc(s.name)}"><div class="atext" data-i="${i}" title="Read SKILL.md"><span>${esc(s.profile ? s.profile + " · " + s.name : s.name)}</span><span class="ameta">${s.last_used ? "last used " + fmtDT(s.last_used) : "never used"}${s.count ? ` · ${s.count} load${s.count === 1 ? "" : "s"}` : ""}</span></div></div>`;
+  const unused = AUDIT_LIST.filter(s => s.unused);
+  const allOn = unused.length > 0 && A_SEL.size === unused.length;
+  const head = `<div class="ahead"><label><input type="checkbox" id="a-all"${allOn ? " checked" : ""}${unused.length ? "" : " disabled"}> select all</label><span style="margin-left:auto">${A_SEL.size} selected</span></div>`;
+  $("#aresults").innerHTML = A_HEAD + head + AUDIT_LIST.map((s, i) => {
+    const k = aKey(s), on = A_SEL.has(k), u = s.unused;
+    const meta = u
+      ? (s.last_used ? "unused · last used " + fmtDT(s.last_used) : "never used")
+      : "used " + fmtWhen(s.last_used);
+    return `<div class="arow${on ? " sel" : ""}${u ? "" : " used"}"><input type="checkbox" data-k="${i}"${on ? " checked" : ""}${u ? "" : " disabled"} title="${u ? "Select" : "Used — not deletable"}"><div class="atext" data-i="${i}" title="Read SKILL.md"><span>${esc(s.profile ? s.profile + " · " + s.name : s.name)}</span><span class="ameta">${meta}${s.count ? ` · ${s.count} load${s.count === 1 ? "" : "s"}` : ""}</span></div></div>`;
   }).join("");
   updateDeleteBtn();
 };
 const openActions = profile => {
-  A_PROFILE = profile; AUDIT_LIST = []; AUDIT_UNUSED = []; A_HEAD = ""; A_SEL = new Set(); A_BY_KEY = new Map();
+  A_PROFILE = profile; AUDIT_LIST = []; A_HEAD = ""; A_SEL = new Set(); A_BY_KEY = new Map();
   $("#amodal-title").textContent = `${profile === "all" ? "All" : profile} · actions`;
   $("#aresults").innerHTML = `<div class="empty">Press “Audit Skills” to scan.</div>`;
   $("#apreview").innerHTML = A_INTRO;
@@ -817,17 +822,19 @@ const runAudit = async note => {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     AUDIT_LIST = d.skills || [];
-    AUDIT_UNUSED = AUDIT_LIST.filter(s => s.unused);
-    A_BY_KEY = new Map(AUDIT_UNUSED.map(s => [aKey(s), s]));
-    A_SEL = new Set([...A_SEL].filter(k => A_BY_KEY.has(k)));
-    const scope = days === "0" ? "never used" : `unused in the last ${days} days`;
-    A_HEAD = `<div class="empty" style="color:var(--fg)"><b>${AUDIT_UNUSED.length}</b> of ${d.total} skills ${scope}</div>`;
-    if (!AUDIT_UNUSED.length) {
-      $("#aresults").innerHTML = A_HEAD + `<div class="empty">Every installed skill was used within the window.</div>`;
+    const unusedN = AUDIT_LIST.filter(s => s.unused).length;
+    A_BY_KEY = new Map(AUDIT_LIST.map(s => [aKey(s), s]));
+    A_SEL = new Set([...A_SEL].filter(k => (A_BY_KEY.get(k) || {}).unused));
+    if (!AUDIT_LIST.length) {
+      $("#aresults").innerHTML = `<div class="empty">No skills installed for this bot.</div>`;
       $("#apreview").innerHTML = note ? `<pre>${esc(note)}</pre>` : `<pre>Nothing to clean up.</pre>`;
       updateDeleteBtn();
       return;
     }
+    const scope = days === "0" ? "never used" : `unused in the last ${days} days`;
+    A_HEAD = unusedN
+      ? `<div class="empty" style="color:var(--fg)"><b>${unusedN}</b> of ${AUDIT_LIST.length} skills ${scope}</div>`
+      : `<div class="empty" style="color:var(--fg)">All ${AUDIT_LIST.length} skills were used within the selected window</div>`;
     renderAudit();
     $("#apreview").innerHTML = note ? `<pre>${esc(note)}</pre>` : A_INTRO;
   } catch (err) {
@@ -837,15 +844,15 @@ const runAudit = async note => {
 $("#audit-run").addEventListener("click", () => runAudit());
 $("#aresults").addEventListener("change", e => {
   if (e.target.id === "a-all") {
-    if (e.target.checked) AUDIT_UNUSED.forEach(s => A_SEL.add(aKey(s)));
+    if (e.target.checked) AUDIT_LIST.filter(s => s.unused).forEach(s => A_SEL.add(aKey(s)));
     else A_SEL.clear();
     renderAudit();
     return;
   }
   const cb = e.target.closest("input[type=checkbox][data-k]");
   if (!cb) return;
-  const s = AUDIT_UNUSED[+cb.dataset.k];
-  if (!s) return;
+  const s = AUDIT_LIST[+cb.dataset.k];
+  if (!s || !s.unused) { renderAudit(); return; }
   const k = aKey(s);
   if (cb.checked) A_SEL.add(k); else A_SEL.delete(k);
   renderAudit();
@@ -853,7 +860,7 @@ $("#aresults").addEventListener("change", e => {
 $("#aresults").addEventListener("click", async e => {
   const t = e.target.closest(".atext[data-i]");
   if (!t) return;
-  const s = AUDIT_UNUSED[+t.dataset.i];
+  const s = AUDIT_LIST[+t.dataset.i];
   if (!s) return;
   document.querySelectorAll("#aresults .atext").forEach(x => (x.style.color = ""));
   t.style.color = "var(--fg)";
