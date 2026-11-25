@@ -388,7 +388,7 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let RANGE = 7, DATE = "", DATA = null, TIMER = null;
-const UI_BUILD = "2026-11-25a";   // bump on UI changes — shown in the footer
+const UI_BUILD = "2026-11-25b";   // bump on UI changes — shown in the footer
 
 const fmtNum = n => n == null ? "–" : Number(n).toLocaleString("en-US");
 const fmtMoney = n => "$" + (n == null ? "0" : Number(n).toFixed(2));
@@ -836,6 +836,7 @@ const runAudit = async note => {
     A_HEAD = unusedN
       ? `<div class="empty" style="color:var(--fg)"><b>${unusedN}</b> of ${AUDIT_LIST.length} skills ${scope}</div>`
       : `<div class="empty" style="color:var(--fg)">All ${AUDIT_LIST.length} skills were used within the selected window</div>`;
+    A_HEAD += `<div class="empty" style="font-size:10px;color:var(--dim)">api: profile=${esc(A_PROFILE)} days=${days} → ${AUDIT_LIST.length} skills, ${unusedN} unused</div>`;
     renderAudit();
     $("#apreview").innerHTML = note ? `<pre>${esc(note)}</pre>` : A_INTRO;
   } catch (err) {

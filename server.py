@@ -1006,7 +1006,10 @@ class Handler(BaseHTTPRequestHandler):
                     days = 30
                 if days not in (0, 30, 90):
                     days = 30
-                self.send_json(skill_audit(HERMES_HOME, profile, days))
+                res = skill_audit(HERMES_HOME, profile, days)
+                print(f"[audit] profile={profile} days={days} total={len(res.get('skills', []))} "
+                      f"unused={res.get('unused')} err={res.get('error')}", flush=True)
+                self.send_json(res)
             elif self.path.startswith("/api/toolmessage"):
                 profile = params.get("profile", "")
                 if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", profile):
