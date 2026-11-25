@@ -388,6 +388,7 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let RANGE = 7, DATE = "", DATA = null, TIMER = null;
+const UI_BUILD = "2026-11-25a";   // bump on UI changes — shown in the footer
 
 const fmtNum = n => n == null ? "–" : Number(n).toLocaleString("en-US");
 const fmtMoney = n => "$" + (n == null ? "0" : Number(n).toFixed(2));
@@ -561,7 +562,7 @@ function render(){
   const costNote = DATA.cost && DATA.cost.mode === "custom"
     ? ` · cost: tokens × custom rates${DATA.cost.multiplier !== 1 ? " ×" + DATA.cost.multiplier : ""}`
     : " · cost: stored estimates";
-  $("#foot").textContent = `Hermes Watchtower · data from ~/.hermes state DBs (read-only) · generated ${DATA.generated_at} · window ${DATA.window_label}${DATA.date ? " (anchored to " + DATA.date + ")" : " (live)"}${costNote} · auto-refreshes every 30s`;
+  $("#foot").textContent = `Hermes Watchtower · ui ${UI_BUILD} · data from ~/.hermes state DBs (read-only) · generated ${DATA.generated_at} · window ${DATA.window_label}${DATA.date ? " (anchored to " + DATA.date + ")" : " (live)"}${costNote} · auto-refreshes every 30s`;
 }
 
 async function load(){

@@ -940,6 +940,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json(delete_skills(HERMES_HOME, items))
 
+    def do_HEAD(self):
+        # Same headers as GET without a body (health checks, curl -I).
+        if self.path in ("/", "/index.html"):
+            here = os.path.dirname(os.path.abspath(__file__))
+            try:
+                size = os.path.getsize(os.path.join(here, "index.html"))
+            except OSError:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+
     def do_GET(self):
         if self.path.startswith("/api/"):
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
@@ -1049,6 +1071,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            # The UI ships as one file that changes with the server; never let a
+            # browser reuse a stale copy (no Last-Modified/ETag here, so heuristic
+            # freshness would silently serve old JS after an upgrade).
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.end_headers()
             self.wfile.write(body)
         else:
