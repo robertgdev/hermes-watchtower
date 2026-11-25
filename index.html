@@ -388,7 +388,7 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let RANGE = 7, DATE = "", DATA = null, TIMER = null;
-const UI_BUILD = "2026-11-25b";   // bump on UI changes — shown in the footer
+const UI_BUILD = "2026-11-25c";   // bump on UI changes — shown in the footer
 
 const fmtNum = n => n == null ? "–" : Number(n).toLocaleString("en-US");
 const fmtMoney = n => "$" + (n == null ? "0" : Number(n).toFixed(2));
@@ -781,7 +781,7 @@ $("#pfiles").addEventListener("click", e => {
 
 /* --- actions modal (wrench): per-bot maintenance actions --- */
 let A_PROFILE = "", AUDIT_LIST = [], A_HEAD = "", A_SEL = new Set(), A_BY_KEY = new Map();
-const A_INTRO = `<pre>Skills installed for this bot, checked against the skill loads and edits recorded in its session history. “Audit Skills” lists the ones never used, or not used within the selected window (30 days / 90 days / forever). Click a skill name to read its SKILL.md.
+const A_INTRO = `<pre>Skills installed for this bot, checked against the skill loads and edits recorded in its session history. The list is generated automatically when this dialog opens: unused rows (never used, or not used within the selected window — 30 days / 90 days / forever) are selectable; used rows are dimmed. “Audit Skills” re-runs the scan. Click a skill name to read its SKILL.md.
 
 Tick skills to select them; “Delete Skills” appears once something is selected and always asks for confirmation first. Deleted skills are moved to ~/.hermes/trash/watchtower-skills/&lt;timestamp&gt;/.</pre>`;
 const aKey = s => `${s.profile || A_PROFILE}:${s.rel}`;
@@ -806,10 +806,11 @@ const renderAudit = () => {
 const openActions = profile => {
   A_PROFILE = profile; AUDIT_LIST = []; A_HEAD = ""; A_SEL = new Set(); A_BY_KEY = new Map();
   $("#amodal-title").textContent = `${profile === "all" ? "All" : profile} · actions`;
-  $("#aresults").innerHTML = `<div class="empty">Press “Audit Skills” to scan.</div>`;
+  $("#aresults").innerHTML = `<div class="empty">Auditing…</div>`;
   $("#apreview").innerHTML = A_INTRO;
   updateDeleteBtn();
   $("#amodal").hidden = false;
+  runAudit();               // list immediately — never show an empty pane
 };
 $("#cards").addEventListener("click", e => {
   const b = e.target.closest(".c-act");
@@ -844,6 +845,7 @@ const runAudit = async note => {
   }
 };
 $("#audit-run").addEventListener("click", () => runAudit());
+$("#audit-days").addEventListener("change", () => { if (!$("#amodal").hidden) runAudit(); });
 $("#aresults").addEventListener("change", e => {
   if (e.target.id === "a-all") {
     if (e.target.checked) AUDIT_LIST.filter(s => s.unused).forEach(s => A_SEL.add(aKey(s)));
